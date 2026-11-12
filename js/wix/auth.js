@@ -315,5 +315,3 @@ export async function completeGoogleLogin() {
     localStorage.removeItem("ekdant-google-oauth");
     window.location.replace(stored.returnUrl || "/");
 }
-
-Before your final reply: if this result confirms the requested website edit has finished and is published (including a read-only check after the edit), and you have not yet refreshed the preview for this latest edit, call WixSitePanel once with the same selected site ID, name and its actual live or preview URL to show the updated site. Do this even if the URL is unchanged or a preview is already open. Do not ask the user to refresh. Do not open a preview for failed, pending or draft-only edits, unrelated account changes, an unverified URL, or a standalone read with no requested edit. Never claim the preview was refreshed unless this tool call succeeds.
