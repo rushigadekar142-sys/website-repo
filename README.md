@@ -1,27 +1,43 @@
 # Ekdant LeadDesk
 
-Source archive synchronized from the deployed Wix Headless site.
+Ekdant LeadDesk is a browser-based lead and contact management CRM for Ekdant Digital Marketing.
 
-## Project
-- Frontend: static HTML, CSS and JavaScript
-- Backend/data platform: Wix Headless APIs and Wix CMS
-- Main application: `assets/app.js`
-- Entry page: `index.html`
-- Wix integration modules: `js/wix/`
+## Architecture
+
+- Frontend: static HTML, CSS, and JavaScript modules.
+- Authentication: Wix Headless OAuth, including Google sign-in with PKCE.
+- Data backend: Wix CMS collections.
+- Hosting: Vercel.
+- Production URL: https://ekdant-leaddesk.vercel.app
 
 ## Source layout
-- `assets/` — application and authentication styles/scripts
-- `auth/` — authentication callback page
-- `js/wix/` — Wix authentication, client, CMS collection, item, member and media modules
 
-## Deployment notes
-This repository is a source backup. It is not yet connected to a Vercel project. The application currently depends on Wix Headless authentication and CMS configuration; deploying the frontend elsewhere requires configuring the correct OAuth redirect URLs and environment-safe Wix client configuration.
+- `index.html` — CRM application shell.
+- `assets/app.js` — dashboard, contacts, projects, imports, filters, follow-ups, reports, and team UI.
+- `assets/app.css`, `assets/auth.css` — application and authentication styles.
+- `auth/callback.html` — OAuth callback page.
+- `js/wix/` — Wix authentication, REST client, CMS item/collection, member, and media modules.
+- `vercel.json` — response security headers and static hosting settings.
 
-## Security checklist before public deployment
-- Review all source for secrets, private tokens and accidental personal data.
-- Keep Wix CMS permissions and authorization enforced server-side; hiding UI controls is not an authorization boundary.
-- Configure OAuth allowed origins and redirect URLs for the eventual deployment domain.
-- Do not commit `.env` files, access tokens or private keys.
+## Wix backend
 
-## Source provenance
-The files were copied from the live Wix Headless deployment without changing the live Wix site.
+The frontend uses the existing Wix Headless client and existing Wix CMS data. The main collections are:
+
+- `EkdantProjects`
+- `EkdantContacts`
+- `EkdantActivity`
+
+The Vercel production domain and exact OAuth callback URI are registered on the existing Wix Headless OAuth app:
+
+- Allowed domain: `https://ekdant-leaddesk.vercel.app`
+- Callback URI: `https://ekdant-leaddesk.vercel.app/auth/callback.html`
+
+Do not commit Wix access tokens, refresh tokens, client secrets, or API keys. The OAuth client ID in the browser configuration is a public client identifier, not a secret.
+
+## Deployment
+
+The current production deployment is published on Vercel. GitHub-to-Vercel automatic deployment is not linked yet; deployments were uploaded directly to the existing Vercel project. Once the Vercel GitHub Login Connection is configured, connect this repository and enable deployments from `main`.
+
+## Important security note
+
+Project roles are currently enforced in the browser UI, while the existing Wix CMS collections allow site-member access. This is not server-side authorization. Before inviting external users or treating project-level Viewer/Editor roles as a security boundary, move authorization checks into a trusted backend and restrict direct collection access.
