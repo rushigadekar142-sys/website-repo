@@ -202,7 +202,7 @@ async function saveImport(form){
     if(phoneKey&&seenPhones.has(phoneKey)){duplicates++;continue}
     try{await insertItem(COL.contacts,item);created++;if(phoneKey){seenLeads.add(key);seenPhones.add(phoneKey)}}catch(e){failed++}
   }
-  await insertItem(COL.activity,{projectId:pid,contactId:"",activityType:"Import",oldStatus:"",newStatus:"Imported",remark:"Imported "+created+" contacts; skipped "+missingPhone+" without phone; duplicates "+duplicates+"; failed "+failed,actorEmail:state.member.loginEmail||"",happenedAt:new Date()});
+  await insertItem(COL.activity,{projectId:pid,contactId:"",activityType:"Import",oldStatus:"",newStatus:"Imported",actorEmail:state.member.loginEmail||"",happenedAt:new Date()});
   closeModal();toast("Imported "+created+" · exact duplicates skipped "+exactDuplicates+" · shared numbers flagged "+duplicates+" · missing phone "+missingPhone+" · failed "+failed);await refresh();
 }
 async function changeStatus(c,s){if(!canEditProject(c.projectId)){toast("You have Viewer access. Ask the owner for Editor access.");return}let old=c.status||S.NEW,at=new Date(),history=[...(c.statusHistory||[]),{from:old,to:s,at:at.toISOString(),by:state.member.loginEmail||""}],follow=c.followUpAt;if(s===S.INTERESTED&&!follow)follow=new Date(Date.now()+86400000);await patchItemFields(COL.contacts,c.id,{status:s,statusChangedAt:at,lastCalledAt:at,followUpAt:follow,statusHistory:history});await insertItem(COL.activity,{projectId:c.projectId,contactId:c.id,activityType:"Status change",oldStatus:old,newStatus:s,actorEmail:state.member.loginEmail||"",happenedAt:at});toast(c.businessName+" moved to "+s);await refresh()}
