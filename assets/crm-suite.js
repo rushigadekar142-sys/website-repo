@@ -143,7 +143,7 @@ function reports() {
     Object.entries(sources).sort((a, b) => b[1] - a[1]).map(x => '<div class="crm-metric"><span>' + esc(x[0]) + '</span><b>' + x[1] + '</b></div>').join("") + '</section>';
 }
 function render() {
-  const host = $("#page-content");
+  const host = $("#crm-page");
   if (!host) return;
   host.innerHTML = state.view === "overview" ? overview() :
     state.view === "pipeline" ? pipeline() :
@@ -290,8 +290,14 @@ function input(e) {
 }
 function mount() {
   if (mounted) return; mounted = true;
+  const legacyPage = $("#page-content");
+  if (legacyPage) legacyPage.style.display = "none";
+  const crmPage = document.createElement("div"); crmPage.id = "crm-page";
+  const pageWrap = document.querySelector(".page-wrap");
+  if (pageWrap) pageWrap.append(crmPage);
   const nav = $(".main-nav");
   if (nav) {
+    nav.querySelectorAll(":scope > .nav-item, :scope > .nav-label").forEach(el => { el.style.display = "none"; });
     const group = document.createElement("span"); group.className = "nav-label"; group.textContent = "EKDANT CRM";
     nav.append(group);
     [["overview", "CRM Overview"], ["leads", "All Leads"], ["pipeline", "Lead Pipeline"], ["due", "Due Today"], ["upcoming", "Upcoming"], ["overdue", "Overdue"], ["calls", "Call History"], ["reports", "CRM Reports"]].forEach(x => {
@@ -302,10 +308,10 @@ function mount() {
   modal.innerHTML = '<section class="crm-modal"><header><div><span class="eyebrow">EKDANT LEADDESK</span><h2 id="crm-modal-title">CRM</h2></div><button class="icon-btn" data-crm-action="close">×</button></header><div id="crm-modal-content"></div></section>';
   document.body.append(modal);
   modal.addEventListener("click", e => { if (e.target === modal) closeModal(); });
-  $("#page-content").addEventListener("click", click);
-  $("#page-content").addEventListener("change", change);
-  $("#page-content").addEventListener("input", input);
-  $("#page-content").addEventListener("submit", submit);
+  $("#crm-page").addEventListener("click", click);
+  $("#crm-page").addEventListener("change", change);
+  $("#crm-page").addEventListener("input", input);
+  $("#crm-page").addEventListener("submit", submit);
   $("#crm-modal-content").addEventListener("click", click);
   $("#crm-modal-content").addEventListener("submit", submit);
   $("#crm-modal-content").addEventListener("change", change);
@@ -316,6 +322,8 @@ function onMember(s) {
   if (!s || s.loading || !s.loggedIn || !s.member) return;
   state.member = s.member;
   if (!mounted && $("#page-content")) mount();
+  state.view = "overview";
+  document.querySelectorAll("[data-crm-view]").forEach(b => b.classList.toggle("crm-active", b.dataset.crmView === "overview"));
   reload().catch(err => toast("CRM data could not load: " + err.message));
 }
 function start() {
