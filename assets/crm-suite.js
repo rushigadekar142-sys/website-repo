@@ -423,8 +423,30 @@ function mount() {
     nav.querySelectorAll(":scope > .nav-item, :scope > .nav-label").forEach(el => { el.style.display = "none"; });
     const group = document.createElement("span"); group.className = "nav-label"; group.textContent = "EKDANT CRM";
     nav.append(group);
-    [["overview", "CRM Overview"], ["leads", "All Leads"], ["pipeline", "Deal Pipeline"], ["companies", "Companies"], ["due", "Due Today"], ["upcoming", "Upcoming"], ["overdue", "Overdue"], ["calls", "Call History"], ["activities", "Activities"], ["automation", "Automation"], ["team", "Team & Access"], ["reports", "CRM Reports"]].forEach(x => {
-      const button = document.createElement("button"); button.className = "nav-item crm-nav-item"; button.dataset.crmView = x[0]; button.textContent = x[1]; button.addEventListener("click", () => setView(x[0])); nav.append(button);
+    const navItems = [
+      ["overview", "CRM Overview", "◫"], ["leads", "All Leads", "☷"],
+      ["pipeline", "Deal Pipeline", "▥"], ["companies", "Companies", "▦"],
+      ["due", "Due Today", "◷"], ["upcoming", "Upcoming", "↗"],
+      ["overdue", "Overdue", "!"], ["calls", "Call History", "☎"],
+      ["activities", "Activities", "◌"], ["automation", "Automation", "⚙"],
+      ["team", "Team & Access", "♧"], ["reports", "CRM Reports", "▤"]
+    ];
+    navItems.forEach(([view, label, glyph]) => {
+      const button = document.createElement("button");
+      button.className = "nav-item crm-nav-item";
+      button.dataset.crmView = view;
+      button.title = label;
+      button.setAttribute("aria-label", label);
+      const icon = document.createElement("span");
+      icon.className = "nav-ico";
+      icon.setAttribute("aria-hidden", "true");
+      icon.textContent = glyph;
+      const text = document.createElement("span");
+      text.className = "crm-nav-text";
+      text.textContent = label;
+      button.append(icon, text);
+      button.addEventListener("click", () => setView(view));
+      nav.append(button);
     });
   }
   const modal = document.createElement("div"); modal.id = "crm-modal"; modal.className = "crm-modal-backdrop";
