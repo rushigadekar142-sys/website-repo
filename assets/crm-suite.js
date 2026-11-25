@@ -195,6 +195,56 @@ function reports() {
       meter("Lost / not interested",lost,"Closed without conversion",total?lost/total*100:0,"#d68b87") +
     '</section>';
 }
+
+function companies(){
+ const groups={};
+ leads().forEach(c=>{const k=String(c.company||c.businessName||"Unassigned company");(groups[k]||(groups[k]=[])).push(c)});
+ return head("ACCOUNT MANAGEMENT","Companies & Accounts","Company groups are derived from existing lead records.",'<button class="btn btn-secondary" data-crm-action="export">Export CSV</button>')+
+ '<div class="crm-filter-row">'+projectSelect()+'<span class="crm-muted">'+Object.keys(groups).length+' company groups</span></div>'+
+ '<div class="crm-company-grid">'+Object.entries(groups).map(([name,rows])=>'<article class="panel crm-company-card"><h3>'+esc(name)+'</h3><b>'+rows.length+' contacts</b><div class="crm-company-people">'+rows.map(c=>'<button class="crm-link" data-crm-action="detail" data-id="'+c.id+'">'+esc(c.contactPerson||c.businessName)+'</button>').join("")+'</div></article>').join("")+'</div>';
+}
+function activitiesView(){
+ const rows=state.activities.slice().sort((a,b)=>new Date(b.happenedAt||0)-new Date(a.happenedAt||0));
+ return head("ENGAGEMENT HISTORY","Activities & Meetings","Timeline for calls, meetings, emails, tasks, status changes and notes.",'<button class="btn btn-primary" data-crm-action="new-activity">＋ Log activity</button>')+
+ '<div class="crm-filter-row">'+projectSelect()+'<span class="crm-muted">'+rows.length+' activities</span></div><section class="panel">'+
+ rows.map(a=>{const c=state.contacts.find(x=>x.id===a.contactId);return '<article class="crm-activity-item"><div><b>'+esc(a.activityType||"Activity")+' · '+esc(c?(c.businessName||c.contactPerson):"Workspace")+'</b><p>'+esc(a.remark||a.nextAction||a.callOutcome||a.newStatus||"Activity recorded")+'</p><small>'+dateFmt(a.happenedAt)+' · '+esc(a.actorName||a.actorEmail||"Team member")+'</small></div></article>'}).join("")+'</section>';
+}
+function teamView(){
+ return head("TEAM & PERMISSIONS","Team access","Review project members and manage Viewer or Editor access.",'')+'<section class="panel">'+allowedProjects().map(p=>'<article class="crm-team-project"><div><b>'+esc(p.name)+'</b><small>'+esc(role(p))+'</small></div><div>'+(p.memberEmails||[]).map(x=>{const a=String(x).split("::");return '<span class="crm-member-chip">'+esc(a[0])+' · '+esc(a[1]||"viewer")+'</span>'}).join("")+'</div>'+(role(p)==="owner"?'<button class="btn btn-secondary" data-crm-action="manage-access" data-id="'+p._id+'">Manage access</button>':'')+'</article>').join("")+'<div class="crm-security-note"><b>Security limitation</b><p>Role checks currently run in the browser and are not server-side authorization. Restrict Wix CMS collection permissions before relying on roles for sensitive data.</p></div></section>';
+}
+function automationView(){
+ const rules=[["autoFollow","Default follow-up for new leads","New lead → next-day follow-up"],["stageLog","Pipeline stage history","Stage changed → activity timeline entry"],["wonLog","Won-deal reporting","Converted / Won → preserve deal value"]];
+ const p=state.projects.find(x=>x._id===state.projectId);
+ return head("WORKFLOW AUTOMATION","Automation rules","Configure project workflow defaults. Scheduled jobs and outbound messaging require a backend service.",'')+'<div class="crm-filter-row">'+projectSelect()+'</div><section class="panel">'+
+ (p&&["owner","editor"].includes(role(p))?rules.map(([k,t,d])=>'<label class="crm-rule-row"><div><b>'+t+'</b><small>'+d+'</small></div><input type="checkbox" data-automation-rule="'+k+'" '+((p.automationRules||{})[k]?"checked":"")+'></label>').join(""):'<p class="crm-muted">Select an editable project to configure rules.</p>')+
+ '<p class="crm-muted crm-rule-footnote">Rules are stored on the project; they do not send emails, WhatsApp messages or scheduled notifications by themselves.</p></section>';
+}
+function newActivityModal(){
+ const rows=leads();if(!rows.length){toast("Add a lead first.");return}
+ openModal("Log activity",'<form id="crm-activity-form"><div class="crm-form-grid"><label>Related lead *<select name="contactId" required>'+rows.map(c=>'<option value="'+c.id+'">'+esc(c.businessName||c.contactPerson||c.phone)+'</option>').join("")+'</select></label><label>Activity type<select name="activityType"><option>Meeting</option><option>Email</option><option>Task</option><option>Note</option></select></label><label>Date & time<input name="happenedAt" type="datetime-local"></label><label>Next action<input name="nextAction"></label><label class="crm-wide">Notes<textarea name="remark"></textarea></label></div><div class="crm-modal-actions"><button type="button" class="btn btn-secondary" data-crm-action="close">Cancel</button><button class="btn btn-primary">Save activity</button></div></form>');
+}
+async function saveActivity(form){
+ const d=new FormData(form),c=state.contacts.find(x=>x.id===String(d.get("contactId")||""));if(!c)throw Error("Lead not found.");
+ if(!["owner","editor"].includes(role(state.projects.find(p=>p._id===c.projectId))))throw Error("No edit access.");
+ await insertItem(COL.activity,{projectId:c.projectId,contactId:c.id,activityType:String(d.get("activityType")),happenedAt:d.get("happenedAt")?new Date(d.get("happenedAt")):new Date(),nextAction:String(d.get("nextAction")||""),remark:String(d.get("remark")||""),actorEmail:state.member.loginEmail||"",actorName:state.member.displayName||""});
+ closeModal();await reload();toast("Activity saved.");
+}
+async function saveAutomationRule(k,v){
+ const p=state.projects.find(x=>x._id===state.projectId);if(!p||!["owner","editor"].includes(role(p)))throw Error("Choose an editable project.");
+ const rules={...(p.automationRules||{}),[k]:v};await patchItemFields(COL.projects,p._id,{automationRules:rules});p.automationRules=rules;toast("Workflow rule saved.");
+}
+function manageAccess(id){
+ const p=state.projects.find(x=>x._id===id);if(!p||role(p)!=="owner")return;
+ const members=(p.memberEmails||[]).map(x=>{const a=String(x).split("::");return {email:a[0],role:a[1]||"viewer"}});
+ openModal("Manage project access",'<form id="crm-access-form" data-id="'+id+'"><div class="field"><label>Team member email</label><input name="email" type="email" required></div><div class="field"><label>Role</label><select name="accessRole"><option value="viewer">Viewer</option><option value="editor">Editor</option></select></div><div>'+members.map(x=>'<span class="crm-member-chip">'+esc(x.email)+' · '+esc(x.role)+'</span>').join("")+'</div><div class="crm-modal-actions"><button type="button" class="btn btn-secondary" data-crm-action="close">Cancel</button><button class="btn btn-primary">Save access</button></div></form>');
+}
+async function saveAccess(form){
+ const p=state.projects.find(x=>x._id===form.dataset.id);if(!p||role(p)!=="owner")throw Error("Only the owner can change access.");
+ const d=new FormData(form),email=String(d.get("email")||"").trim().toLowerCase(),r=String(d.get("accessRole")||"viewer");if(!email)throw Error("Email required.");
+ const members=(p.memberEmails||[]).filter(x=>String(x).split("::")[0].toLowerCase()!==email);members.push(email+"::"+r);
+ await patchItemFields(COL.projects,p._id,{memberEmails:members});closeModal();await reload();toast("Project access saved.");
+}
+
 function render() {
   const host = $("#crm-page");
   if (!host) return;
@@ -202,6 +252,10 @@ function render() {
     state.view === "pipeline" ? pipeline() :
     state.view === "due" || state.view === "upcoming" || state.view === "overdue" ? followups(state.view) :
     state.view === "calls" ? calls() :
+    state.view === "companies" ? companies() :
+    state.view === "activities" ? activitiesView() :
+    state.view === "automation" ? automationView() :
+    state.view === "team" ? teamView() :
     state.view === "reports" ? reports() : leadList();
   host.querySelectorAll(".crm-stats,.crm-two-col,.crm-table-wrap,.crm-board,.panel").forEach(el => el.classList.add("crm-reveal"));
   const reveal = host.querySelectorAll(".crm-reveal");
@@ -319,6 +373,8 @@ function click(e) {
   if (b) {
     const a = b.dataset.crmAction;
     if (a === "new-lead") newLeadModal();
+    if (a === "new-activity") newActivityModal();
+    if (a === "manage-access") manageAccess(b.dataset.id);
     if (a === "call") callModal(b.dataset.id);
     if (a === "detail") detailModal(b.dataset.id);
     if (a === "close") closeModal();
@@ -333,6 +389,8 @@ async function submit(e) {
     if (button) { button.disabled = true; button.textContent = "Saving…"; }
     try { await saveLead(e.target); } catch (err) { if (button) { button.disabled = false; button.textContent = "Save lead"; } toast("Lead not saved: " + err.message); }
   }
+  if (e.target.id === "crm-activity-form") { e.preventDefault(); try { await saveActivity(e.target); } catch(err) { toast("Activity not saved: "+err.message); } }
+  if (e.target.id === "crm-access-form") { e.preventDefault(); try { await saveAccess(e.target); } catch(err) { toast("Access not saved: "+err.message); } }
   if (e.target.id === "crm-call-form") {
     e.preventDefault(); const button = e.target.querySelector('button[type="submit"]');
     if (button) { button.disabled = true; button.textContent = "Saving…"; }
@@ -342,6 +400,7 @@ async function submit(e) {
 function change(e) {
   if (e.target.id === "crm-project-filter") { state.projectId = e.target.value; render(); }
   if (e.target.id === "crm-stage-filter") { state.stage = e.target.value || "all"; render(); }
+  if (e.target.matches("[data-automation-rule]")) saveAutomationRule(e.target.dataset.automationRule,e.target.checked).catch(err=>{e.target.checked=!e.target.checked;toast(err.message)});
   if (e.target.matches("[data-crm-status]")) { const id = e.target.dataset.crmStatus, next = e.target.value; e.target.value = ""; if (next) moveStage(id, next).catch(err => toast(err.message)); }
 }
 function input(e) {
@@ -359,7 +418,7 @@ function mount() {
     nav.querySelectorAll(":scope > .nav-item, :scope > .nav-label").forEach(el => { el.style.display = "none"; });
     const group = document.createElement("span"); group.className = "nav-label"; group.textContent = "EKDANT CRM";
     nav.append(group);
-    [["overview", "CRM Overview"], ["leads", "All Leads"], ["pipeline", "Lead Pipeline"], ["due", "Due Today"], ["upcoming", "Upcoming"], ["overdue", "Overdue"], ["calls", "Call History"], ["reports", "CRM Reports"]].forEach(x => {
+    [["overview", "CRM Overview"], ["leads", "All Leads"], ["pipeline", "Deal Pipeline"], ["companies", "Companies"], ["due", "Due Today"], ["upcoming", "Upcoming"], ["overdue", "Overdue"], ["calls", "Call History"], ["activities", "Activities"], ["automation", "Automation"], ["team", "Team & Access"], ["reports", "CRM Reports"]].forEach(x => {
       const button = document.createElement("button"); button.className = "nav-item crm-nav-item"; button.dataset.crmView = x[0]; button.textContent = x[1]; button.addEventListener("click", () => setView(x[0])); nav.append(button);
     });
   }
