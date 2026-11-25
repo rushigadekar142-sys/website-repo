@@ -1,0 +1,29 @@
+name: CRM checks
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main, "fix/**"]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Unit tests and syntax
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Run unit tests
+        run: node --test tests/*.test.mjs
+      - name: Check JavaScript syntax
+        run: |
+          node --check assets/app.js
+          node --check assets/crm-suite.js
+          node --check js/utils/phone.js
