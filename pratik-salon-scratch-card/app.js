@@ -31,8 +31,9 @@ function renderFields(state) {
     const inputType = field.control === "phone" ? "tel" : "text";
     return '<div class="field"><label for="' + esc(field.target) + '">' + esc(field.label) + (field.required ? ' *' : '') + '</label>' +
       '<input id="' + esc(field.target) + '" name="' + esc(field.target) + '" type="' + inputType + '" value="' + esc(value) + '" placeholder="' + esc(field.placeholder || "") + '" ' +
-      (field.required ? 'required ' : '') + (invalid ? 'aria-invalid="true"' : '') + ' autocomplete="' + (field.control === "phone" ? "tel" : "name") + '">' +
-      (invalid ? '<p class="field-error">' + esc(invalid) + '</p>' : '') + '</div>';
+      (field.required ? 'required ' : '') + (invalid ? 'aria-invalid="true" aria-describedby="' + esc(field.target + "-error") + '"' : '') +
+      (field.control === "phone" ? 'inputmode="numeric" maxlength="10" autocomplete="tel-national"' : 'autocomplete="name"') + '>' +
+      (invalid ? '<p class="field-error" id="' + esc(field.target + "-error") + '" aria-live="polite">' + esc(invalid) + '</p>' : '') + '</div>';
   }).join("") + '<button class="submit-button" type="submit" ' + (state.loading ? 'disabled' : '') + '>Continue to Scratch</button>';
   visible.forEach(field => {
     const input = document.getElementById(field.target);
@@ -123,6 +124,18 @@ function setupScratch() {
   ctx.font = "11px DM Sans, Arial";
   ctx.fillText("✦  PRATIK SALON  ✦", width / 2, height / 2 + 22);
   let drawing = false, revealed = false;
+  const revealButton = document.getElementById("reveal-accessible");
+  function finishReveal() {
+    if (revealed) return;
+    revealed = true;
+    canvas.style.transition = "opacity .45s";
+    canvas.style.opacity = "0";
+    canvas.style.pointerEvents = "none";
+    document.getElementById("scratch-result").setAttribute("aria-hidden", "false");
+    document.getElementById("scratch-hint").textContent = "🎉 Your discount is revealed! Show this screen at Pratik Salon.";
+    if (revealButton) revealButton.hidden = true;
+    setTimeout(() => { canvas.style.display = "none"; }, 500);
+  }
   function scratch(event) {
     if (!drawing || revealed) return;
     const box = canvas.getBoundingClientRect();
@@ -133,15 +146,10 @@ function setupScratch() {
       const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
       let transparent = 0;
       for (let i = 3; i < pixels.length; i += 4) if (pixels[i] < 30) transparent++;
-      if (transparent / (pixels.length / 4) > .42) {
-        revealed = true;
-        canvas.style.transition = "opacity .45s";
-        canvas.style.opacity = "0";
-        document.getElementById("scratch-hint").textContent = "🎉 Your discount is revealed! Show this screen at Pratik Salon.";
-        setTimeout(() => { canvas.style.display = "none"; }, 500);
-      }
+      if (transparent / (pixels.length / 4) > .42) finishReveal();
     }
   }
+  if (revealButton) revealButton.addEventListener("click", finishReveal);
   canvas.addEventListener("pointerdown", event => { drawing = true; canvas.setPointerCapture(event.pointerId); scratch(event); });
   canvas.addEventListener("pointermove", scratch);
   ["pointerup", "pointercancel", "lostpointercapture"].forEach(name => canvas.addEventListener(name, () => { drawing = false; }));
