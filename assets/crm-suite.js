@@ -150,6 +150,12 @@ function render() {
     state.view === "due" || state.view === "upcoming" || state.view === "overdue" ? followups(state.view) :
     state.view === "calls" ? calls() :
     state.view === "reports" ? reports() : leadList();
+  host.querySelectorAll(".crm-stats,.crm-two-col,.crm-table-wrap,.crm-board,.panel").forEach(el => el.classList.add("crm-reveal"));
+  const reveal = host.querySelectorAll(".crm-reveal");
+  if ("IntersectionObserver" in window) {
+    const observer = new IntersectionObserver(entries => entries.forEach(entry => { if (entry.isIntersecting) { entry.target.classList.add("is-visible"); observer.unobserve(entry.target); } }), {threshold:0.08});
+    reveal.forEach(el => observer.observe(el));
+  } else reveal.forEach(el => el.classList.add("is-visible"));
 }
 function openModal(title, content) {
   $("#crm-modal-title").textContent = title;
