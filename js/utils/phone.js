@@ -29,9 +29,9 @@ export function normalizeWhatsAppNumber(value, defaultCountryCode = "91") {
   return digits.length >= 8 && digits.length <= 15 ? digits : null;
 }
 
-export function buildWhatsAppUrl(value, message = "") {
-  const digits = String(value ?? "").replace(/\D/g, "");
-  if (digits.length < 8 || digits.length > 15) return null;
+export function buildWhatsAppUrl(value, message = "", defaultCountryCode = "91") {
+  const digits = normalizeWhatsAppNumber(value, defaultCountryCode);
+  if (!digits) return null;
   const base = "https://wa.me/" + digits;
   return message ? base + "?text=" + encodeURIComponent(String(message)) : base;
 }
