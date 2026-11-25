@@ -163,6 +163,9 @@ document.getElementById("start-again").addEventListener("click", () => {
   const canvas = document.getElementById("scratch-canvas");
   canvas.style.display = "block";
   canvas.style.opacity = "1";
+  canvas.style.pointerEvents = "auto";
+  document.getElementById("scratch-result").setAttribute("aria-hidden", "true");
+  document.getElementById("reveal-accessible").hidden = false;
   fieldsEl.scrollIntoView({ behavior: "smooth", block: "center" });
 });
 document.getElementById("year").textContent = new Date().getFullYear();
