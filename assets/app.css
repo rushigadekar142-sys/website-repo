@@ -17,3 +17,23 @@
   .crm-nav-item .crm-nav-text{display:none}
   .crm-nav-item .nav-ico{width:auto;font-size:18px}
 }
+
+/* Mobile navigation drawer */
+.crm-mobile-menu-toggle{display:none;align-items:center;justify-content:center;width:34px;height:34px;flex:0 0 34px;border:1px solid var(--line);border-radius:9px;background:#ffffff08;color:#e7f4f0;font-size:17px}
+.crm-mobile-nav-scrim{display:none}
+@media(max-width:760px){
+  .app-shell{gap:0}
+  .sidebar{position:fixed;left:8px;top:8px;bottom:8px;z-index:80;width:min(280px,calc(100vw - 32px));min-width:0;height:auto;min-height:0;transform:translateX(calc(-100% - 18px));transition:transform .22s ease;box-shadow:0 20px 70px #000b}
+  .sidebar.mobile-open{transform:translateX(0)}
+  .sidebar .brand>span:last-child{display:block}
+  .sidebar .workspace-switch{display:flex}
+  .sidebar .nav-label{display:block}
+  .sidebar .sidebar-bottom{display:block}
+  .sidebar .nav-item{justify-content:flex-start;padding:10px 11px;font-size:11px}
+  .sidebar .crm-nav-item{font-size:10px!important;padding:9px 11px!important}
+  .sidebar .crm-nav-item .crm-nav-text{display:inline}
+  .crm-mobile-menu-toggle{display:inline-flex}
+  .crm-mobile-nav-scrim.open{display:block;position:fixed;inset:0;z-index:75;padding:0;border:0;background:#030407b8;backdrop-filter:blur(3px)}
+  .main-area{width:100%;min-width:0}
+  .crumb{align-items:center}
+}
