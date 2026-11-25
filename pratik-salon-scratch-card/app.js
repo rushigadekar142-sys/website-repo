@@ -89,6 +89,7 @@ function revealScratch(name, phone) {
     if (phone) localStorage.setItem(key, String(prize));
   }
   document.getElementById("winner-name").textContent = name;
+  document.getElementById("winner-mobile").textContent = phone ? "••••••" + phone.slice(-4) : "";
   document.getElementById("discount-number").textContent = prize + "%";
   document.getElementById("personal-heading").textContent = "This one’s for you, " + name + ".";
   entryPanel.hidden = true;
