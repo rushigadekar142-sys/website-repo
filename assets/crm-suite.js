@@ -59,10 +59,19 @@ function toast(message) {
   stack.append(item);
   setTimeout(() => item.remove(), 3500);
 }
+function closeMobileNav() {
+  const sidebar = $(".sidebar");
+  const scrim = $("#crm-mobile-nav-scrim");
+  const toggle = $("#crm-mobile-menu-toggle");
+  if (sidebar) sidebar.classList.remove("mobile-open");
+  if (scrim) scrim.classList.remove("open");
+  if (toggle) toggle.setAttribute("aria-expanded", "false");
+}
 function setView(view) {
   state.view = view;
   document.querySelectorAll("[data-crm-view]").forEach(b => b.classList.toggle("crm-active", b.dataset.crmView === view));
   render();
+  closeMobileNav();
 }
 function head(kicker, title, description, actions) {
   return '<div class="crm-head"><div><span class="eyebrow">' + kicker + '</span><h1>' + title + '</h1><p>' + description + '</p></div><div class="crm-head-actions">' + (actions || "") + '</div></div>';
@@ -418,6 +427,37 @@ function mount() {
   const crmPage = document.createElement("div"); crmPage.id = "crm-page";
   const pageWrap = document.querySelector(".page-wrap");
   if (pageWrap) pageWrap.append(crmPage);
+
+  const crumb = $(".crumb");
+  if (crumb && !$("#crm-mobile-menu-toggle")) {
+    const toggle = document.createElement("button");
+    toggle.id = "crm-mobile-menu-toggle";
+    toggle.className = "crm-mobile-menu-toggle";
+    toggle.type = "button";
+    toggle.textContent = "☰";
+    toggle.title = "Open navigation";
+    toggle.setAttribute("aria-label", "Open navigation");
+    toggle.setAttribute("aria-expanded", "false");
+    toggle.addEventListener("click", () => {
+      const sidebar = $(".sidebar");
+      const scrim = $("#crm-mobile-nav-scrim");
+      const open = !!sidebar && !sidebar.classList.contains("mobile-open");
+      if (sidebar) sidebar.classList.toggle("mobile-open", open);
+      if (scrim) scrim.classList.toggle("open", open);
+      toggle.setAttribute("aria-expanded", String(open));
+      toggle.setAttribute("aria-label", open ? "Close navigation" : "Open navigation");
+    });
+    crumb.prepend(toggle);
+
+    const scrim = document.createElement("button");
+    scrim.id = "crm-mobile-nav-scrim";
+    scrim.className = "crm-mobile-nav-scrim";
+    scrim.type = "button";
+    scrim.setAttribute("aria-label", "Close navigation");
+    scrim.addEventListener("click", closeMobileNav);
+    document.body.append(scrim);
+  }
+
   const nav = $(".main-nav");
   if (nav) {
     nav.querySelectorAll(":scope > .nav-item, :scope > .nav-label").forEach(el => { el.style.display = "none"; });
@@ -466,7 +506,7 @@ function mount() {
   $("#crm-modal-content").addEventListener("submit", submit);
   $("#crm-modal-content").addEventListener("change", change);
   $("#export-btn").addEventListener("click", exportCsv);
-  document.addEventListener("keydown", e => { if (e.key === "Escape") closeModal(); });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") { closeModal(); closeMobileNav(); } });
 }
 function onMember(s) {
   if (!s || s.loading || !s.loggedIn || !s.member) return;
