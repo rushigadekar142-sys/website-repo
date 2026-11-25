@@ -151,7 +151,8 @@ function reports() {
     const city = String(c.city || c.area || c.location || c.state || "Location not recorded").trim();
     geoCounts[city] = (geoCounts[city] || 0) + 1;
   });
-  const sourceList = Object.entries(sourceCounts).sort((a,b) => b[1]-a[1]).slice(0,6);
+  const allSources = Object.entries(sourceCounts).sort((a,b) => b[1]-a[1]);
+  const sourceList = allSources.length > 6 ? [...allSources.slice(0,5), ["Other sources", allSources.slice(5).reduce((n,x)=>n+x[1],0)]] : allSources;
   const sourceColors = ["#0f8b68","#62b991","#9bcfb3","#8ba6d9","#c3a7e8","#e0b56e"];
   let cursor = 0;
   const gradient = sourceList.length ? sourceList.map((x,i) => {
