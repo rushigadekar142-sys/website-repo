@@ -42,3 +42,21 @@ test("builds a valid WhatsApp deep link and encodes the message", () => {
 test("does not build links for invalid numbers", () => {
   assert.equal(buildWhatsAppUrl("12345"), null);
 });
+
+test("builds a valid link from a raw local number using the workspace country code", () => {
+  assert.equal(
+    buildWhatsAppUrl("98765 43210", "Hello", "91"),
+    "https://wa.me/919876543210?text=Hello"
+  );
+});
+
+test("builds a link from an explicitly international number", () => {
+  assert.equal(
+    buildWhatsAppUrl("+1 (202) 555-0123"),
+    "https://wa.me/12025550123"
+  );
+});
+
+test("rejects malformed values when building WhatsApp links", () => {
+  assert.equal(buildWhatsAppUrl("not a phone number"), null);
+});
