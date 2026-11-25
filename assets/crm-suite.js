@@ -1,5 +1,6 @@
 import { subscribeMember, getMemberState } from "/js/wix/member-store.js";
 import { queryItems, insertItem, patchItemFields } from "/js/wix/items.js";
+import { normalizeWhatsAppNumber, buildWhatsAppUrl } from "/js/utils/phone.js";
 
 const COL = { projects: "EkdantProjects", contacts: "EkdantContacts", activity: "EkdantActivity" };
 const STAGES = ["New Lead", "Attempted", "Connected", "Interested", "Proposal Sent", "Negotiation", "Converted / Won", "Lost"];
@@ -299,11 +300,13 @@ function callModal(id) {
 function detailModal(id) {
   const c = state.contacts.find(x => x.id === id);
   if (!c) return;
-  const wa = String(c.whatsapp || c.phone || "").replace(/\D/g, "");
+  const project = state.projects.find(x => x._id === c.projectId);
+  const defaultCountryCode = project && (project.defaultCountryCode || project.countryCode) || "91";
+  const wa = normalizeWhatsAppNumber(c.whatsapp || c.phone, defaultCountryCode);
   const activity = state.activities.filter(a => a.contactId === id).sort((a, b) => new Date(b.happenedAt || 0) - new Date(a.happenedAt || 0)).slice(0, 12);
   openModal(c.businessName || c.contactPerson || "Lead profile", '<div class="crm-detail-grid">' +
     [["Lead ID", c.leadId || c.srNo || id], ["Status", c.status], ["Phone", c.phone], ["WhatsApp", c.whatsapp || c.phone], ["Email", c.email], ["Company", c.company], ["City", c.city || c.area], ["Source", c.source], ["Campaign", c.campaign], ["Assigned to", c.assignedTo], ["Priority", c.priority], ["Follow-up", dateFmt(c.followUpAt)], ["Deal value", c.dealValue ? "₹" + c.dealValue : "—"], ["Payment status", c.paymentStatus], ["Industry", c.industry], ["Website", c.website], ["Tags", c.tags], ["Custom field 1", c.customField1], ["Custom field 2", c.customField2]].map(x => '<div><small>' + x[0] + '</small><b>' + esc(x[1] || "—") + '</b></div>').join("") + '</div>' +
-    '<div class="crm-modal-actions"><a class="btn btn-secondary" href="tel:' + esc(c.phone || "") + '">Call</a>' + (c.email ? '<a class="btn btn-secondary" href="mailto:' + esc(c.email) + '">Email</a>' : "") + (c.website ? '<a class="btn btn-secondary" target="_blank" rel="noopener" href="' + esc(c.website) + '">Website</a>' : "") + (wa ? '<a class="btn btn-secondary" target="_blank" rel="noopener" href="https://wa.me/' + wa + '">WhatsApp</a>' : "") + '<button class="btn btn-primary" data-crm-action="call" data-id="' + id + '">＋ Log call</button></div>' +
+    '<div class="crm-modal-actions"><a class="btn btn-secondary" href="tel:' + esc(c.phone || "") + '">Call</a>' + (c.email ? '<a class="btn btn-secondary" href="mailto:' + esc(c.email) + '">Email</a>' : "") + (c.website ? '<a class="btn btn-secondary" target="_blank" rel="noopener" href="' + esc(c.website) + '">Website</a>' : "") + (wa ? '<a class="btn btn-secondary" target="_blank" rel="noopener noreferrer" href="' + esc(buildWhatsAppUrl(wa)) + '">WhatsApp</a>' : "") + '<button class="btn btn-primary" data-crm-action="call" data-id="' + id + '">＋ Log call</button></div>' +
     '<section class="crm-history"><b>Activity timeline</b>' + (activity.map(a => '<div><b>' + esc(a.callOutcome || a.newStatus || a.activityType) + '</b><small>' + dateFmt(a.happenedAt) + ' · ' + esc(a.remark || "") + '</small></div>').join("") || '<p>No activity yet.</p>') + '</section>');
 }
 function statusForOutcome(outcome) {
