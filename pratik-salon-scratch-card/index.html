@@ -62,16 +62,20 @@
       <div class="panel-heading">
         <span class="step-label">02 / YOUR SURPRISE</span>
         <h2 id="personal-heading">Your reward is ready.</h2>
-        <p>Rub the silver surface with your finger or mouse to reveal your discount.</p>
+        <p>Scratch the vertical voucher with your finger to reveal your personal salon reward.</p>
       </div>
       <div class="scratch-stage">
         <div class="scratch-result" id="scratch-result" aria-hidden="true">
+          <span class="voucher-topline">PRATIK SALON · EXCLUSIVE REWARD</span>
           <span class="result-kicker">A SPECIAL REWARD FOR</span>
           <strong id="winner-name">YOU</strong>
           <div class="discount-line"><span id="discount-number">5%</span><small>OFF</small></div>
-          <span class="result-footer">AT PRATIK SALON</span>
+          <span class="voucher-service">YOUR NEXT SALON VISIT</span>
+          <span class="voucher-mobile" id="winner-mobile"></span>
+          <span class="result-footer">PRESENT THIS VOUCHER AT PRATIK SALON</span>
+          <span class="voucher-bottom-mark">✦</span>
         </div>
-        <canvas id="scratch-canvas" width="620" height="340" aria-label="Scratch this card to reveal your discount"></canvas>
+        <canvas id="scratch-canvas" width="420" height="560" aria-label="Scratch this vertical voucher to reveal your discount"></canvas>
         <button class="reveal-accessible" id="reveal-accessible" type="button">Reveal discount without scratching</button>
       </div>
       <p class="scratch-hint" id="scratch-hint">✨ Scratch here to reveal your surprise</p>
