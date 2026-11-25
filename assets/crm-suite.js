@@ -136,11 +136,63 @@ function calls() {
     rows.map(a => { const c = state.contacts.find(x => x.id === a.contactId); return '<tr><td>' + dateFmt(a.happenedAt) + '</td><td>' + esc(c ? c.businessName || c.contactPerson : a.contactId) + '</td><td>' + esc(a.callOutcome || a.newStatus || "—") + '</td><td>' + esc(a.actorName || a.actorEmail || "—") + '</td><td>' + (a.callDurationSeconds || 0) + ' sec</td><td>' + esc(a.remark || "—") + '</td><td>' + dateFmt(a.followUpAt) + '</td></tr>'; }).join("") + '</tbody></table></div>';
 }
 function reports() {
-  const rows = leads(), count = s => rows.filter(c => c.status === s).length, sources = {};
-  rows.forEach(c => { const s = c.source || "Unspecified"; sources[s] = (sources[s] || 0) + 1; });
-  return head("ANALYTICS", "Reports", "Live counts from the existing Wix CRM records.", '<button class="btn btn-secondary" data-crm-action="export">Export CSV</button>') +
-    '<div class="crm-stats">' + stat("Leads", rows.length, "Total", "leads") + stat("Interested", count("Interested"), "Prospects", "leads") + stat("Won", count("Converted / Won"), "Customers", "customers") + stat("Lost", count("Lost"), "Unsuccessful", "leads") + '</div><section class="panel"><div class="panel-title">Lead generation by source</div>' +
-    Object.entries(sources).sort((a, b) => b[1] - a[1]).map(x => '<div class="crm-metric"><span>' + esc(x[0]) + '</span><b>' + x[1] + '</b></div>').join("") + '</section>';
+  const rows = leads(), total = rows.length;
+  const count = s => rows.filter(c => c.status === s).length;
+  const won = count("Converted / Won"), lost = count("Lost") + count("Not Interested");
+  const active = Math.max(0, total - won - lost);
+  const conversion = total ? Math.round(won / total * 100) : 0;
+  const sourceCounts = {}, stageCounts = {};
+  const geoCounts = {};
+  rows.forEach(c => {
+    const source = String(c.source || "Unspecified").trim() || "Unspecified";
+    sourceCounts[source] = (sourceCounts[source] || 0) + 1;
+    const stage = c.status || "New Lead";
+    stageCounts[stage] = (stageCounts[stage] || 0) + 1;
+    const city = String(c.city || c.area || c.location || c.state || "Location not recorded").trim();
+    geoCounts[city] = (geoCounts[city] || 0) + 1;
+  });
+  const sourceList = Object.entries(sourceCounts).sort((a,b) => b[1]-a[1]).slice(0,6);
+  const sourceColors = ["#0f8b68","#62b991","#9bcfb3","#8ba6d9","#c3a7e8","#e0b56e"];
+  let cursor = 0;
+  const gradient = sourceList.length ? sourceList.map((x,i) => {
+    const from = cursor / Math.max(1,total) * 100; cursor += x[1];
+    return sourceColors[i % sourceColors.length] + " " + from + "% " + (cursor / Math.max(1,total) * 100) + "%";
+  }).join(",") : "#edf2ef 0% 100%";
+  const geoList = Object.entries(geoCounts).sort((a,b) => b[1]-a[1]).slice(0,8);
+  const maxGeo = Math.max(1,...geoList.map(x=>x[1]));
+  const stageList = STAGES.map(s=>[s,stageCounts[s]||0]).filter(x=>x[1]>0);
+  const maxStage = Math.max(1,...stageList.map(x=>x[1]));
+  const calls = state.activities.filter(a=>a.activityType==="Call").length;
+  const followups = rows.filter(c=>c.followUpAt && new Date(c.followUpAt)>=dayStart()).length;
+  const meter = (label,value,sub,percent,color) => '<div class="analytics-meter"><div class="analytics-meter-head"><span>'+label+'</span><b>'+value+'</b></div><div class="analytics-meter-track"><i style="width:'+Math.max(0,Math.min(100,percent))+'%;--meter-color:'+color+'"></i></div><small>'+sub+'</small></div>';
+  return head("ANALYTICS & INSIGHTS","Reports & Performance","A live visual breakdown of your current CRM records. Use the project filter to compare individual workspaces.",'<button class="btn btn-secondary" data-crm-action="export">Export CSV</button>') +
+    '<div class="crm-filter-row">'+projectSelect()+'<span class="crm-muted">Based on '+total+' visible lead records</span></div>' +
+    '<div class="analytics-kpis">' +
+      '<article class="analytics-kpi"><span>Total leads</span><b>'+total+'</b><small>Current filtered database</small><div class="analytics-kpi-icon">◎</div></article>' +
+      '<article class="analytics-kpi"><span>Converted / won</span><b>'+won+'</b><small>Successfully closed leads</small><div class="analytics-kpi-icon">↗</div></article>' +
+      '<article class="analytics-kpi"><span>Call activities</span><b>'+calls+'</b><small>Logged call records</small><div class="analytics-kpi-icon">⌕</div></article>' +
+      '<article class="analytics-kpi"><span>Follow-ups due</span><b>'+followups+'</b><small>Today and overdue</small><div class="analytics-kpi-icon">◷</div></article>' +
+    '</div>' +
+    '<div class="analytics-grid">' +
+      '<section class="panel analytics-panel"><div class="panel-head"><div><div class="panel-title">Conversion performance</div><div class="panel-sub">Won leads as a share of all visible leads</div></div><span class="analytics-tag">LIVE</span></div>' +
+        '<div class="conversion-layout"><div class="conversion-gauge" style="--gauge-value:'+conversion+'"><div><b>'+conversion+'%</b><small>Conversion</small></div></div><div class="conversion-legend"><div><i class="legend-dot won"></i><span>Converted / won</span><b>'+won+'</b></div><div><i class="legend-dot active"></i><span>In progress</span><b>'+active+'</b></div><div><i class="legend-dot lost"></i><span>Lost / not interested</span><b>'+lost+'</b></div></div></div>' +
+        meter("Interested leads",count("Interested"),"Leads currently marked interested",total?count("Interested")/total*100:0,"#70b991") +
+      '</section>' +
+      '<section class="panel analytics-panel"><div class="panel-head"><div><div class="panel-title">Lead source mix</div><div class="panel-sub">Where your enquiries originate</div></div></div>' +
+        '<div class="source-chart-layout"><div class="source-donut" style="background:conic-gradient('+gradient+')"><div><b>'+total+'</b><small>Leads</small></div></div><div class="source-legend">'+(sourceList.map((x,i)=>'<div><i style="background:'+sourceColors[i%sourceColors.length]+'"></i><span>'+esc(x[0])+'</span><b>'+x[1]+'</b></div>').join("")||'<small class="crm-muted">No source data recorded yet.</small>')+'</div></div>' +
+      '</section>' +
+    '</div>' +
+    '<section class="panel analytics-panel"><div class="panel-head"><div><div class="panel-title">Pipeline distribution</div><div class="panel-sub">Lead count and share at each sales stage</div></div><span class="analytics-tag">'+stageList.length+' active stages</span></div>' +
+      '<div class="pipeline-chart">'+STAGES.map(s=>{const n=stageCounts[s]||0;return '<div class="pipeline-chart-row"><div class="pipeline-chart-label">'+esc(s)+'</div><div class="pipeline-chart-track"><i style="width:'+(n/maxStage*100)+'%"></i></div><b>'+n+'</b><small>'+(total?Math.round(n/total*100):0)+'%</small></div>';}).join("")+'</div>' +
+    '</section>' +
+    '<section class="panel analytics-panel"><div class="panel-head"><div><div class="panel-title">Geographical lead distribution</div><div class="panel-sub">Ranked by city, area or available location field in your lead records</div></div><span class="analytics-tag">LOCATION</span></div>' +
+      '<div class="geo-grid">'+(geoList.map((x,i)=>'<article class="geo-card"><div class="geo-card-top"><span class="geo-pin">⌖</span><small>#'+(i+1)+'</small></div><b>'+esc(x[0])+'</b><div class="geo-count">'+x[1]+' <span>leads</span></div><div class="geo-track"><i style="width:'+(x[1]/maxGeo*100)+'%"></i></div><small>'+ (total?Math.round(x[1]/total*100):0)+'% of visible leads</small></article>').join("")||'<p class="crm-muted">No geographical data recorded. Add city, area or location values to lead profiles to populate this section.</p>')+'</div>' +
+    '</section>' +
+    '<section class="panel analytics-panel"><div class="panel-head"><div><div class="panel-title">Performance meters</div><div class="panel-sub">Quick operational indicators from the current CRM data</div></div></div>' +
+      meter("Converted leads",won,total+" total leads",total?won/total*100:0,"#16845f") +
+      meter("Interested leads",count("Interested"),"Currently interested",total?count("Interested")/total*100:0,"#6eb88f") +
+      meter("Lost / not interested",lost,"Closed without conversion",total?lost/total*100:0,"#d68b87") +
+    '</section>';
 }
 function render() {
   const host = $("#crm-page");
