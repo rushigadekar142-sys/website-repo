@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#111111">
+  <title>Pratik Salon | Scratch & Win</title>
+  <meta name="description" content="Enter your details at Pratik Salon and scratch to reveal your exclusive salon discount from 1% to 10%.">
+  <meta property="og:title" content="Pratik Salon — Scratch & Win">
+  <meta property="og:description" content="Your next salon visit comes with a surprise. Enter, scratch and reveal your discount.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+  <main class="page-shell">
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="Pratik Salon home">
+        <span class="brand-mark">P</span>
+        <span><strong>PRATIK</strong><small>SALON</small></span>
+      </a>
+      <span class="top-note">A LITTLE SURPRISE FOR YOU</span>
+    </header>
+    <section class="hero">
+      <div class="hero-copy">
+        <p class="eyebrow"><span></span> THE PRATIK SALON REWARD</p>
+        <h1>Good hair.<br><em>Great surprises.</em></h1>
+        <p class="intro">Your next salon visit just got more exciting. Enter your details and uncover a special discount made just for you.</p>
+        <div class="perks">
+          <div><span class="perk-icon">✦</span><span>One surprise discount</span></div>
+          <div><span class="perk-icon">✦</span><span>Up to 10% off</span></div>
+          <div><span class="perk-icon">✦</span><span>Made for you</span></div>
+        </div>
+      </div>
+      <div class="visual-wrap" aria-hidden="true">
+        <div class="halo"></div>
+        <div class="visual-card">
+          <span class="visual-kicker">YOUR MOMENT</span>
+          <div class="visual-percent">?</div>
+          <span class="visual-caption">SCRATCH TO REVEAL</span>
+          <div class="sparkle s1">✦</div><div class="sparkle s2">✧</div><div class="sparkle s3">✦</div>
+        </div>
+        <div class="floating-tag">A treat, just for you</div>
+      </div>
+    </section>
+    <section class="game-panel" id="entry-panel">
+      <div class="panel-heading">
+        <span class="step-label">01 / YOUR DETAILS</span>
+        <h2>Let’s make it personal.</h2>
+        <p>Enter your name and mobile number to unlock your scratch card.</p>
+      </div>
+      <form id="entry-form" class="entry-form">
+        <div id="form-fields" class="form-fields"><div class="loading">Preparing your entry form…</div></div>
+        <div id="form-error" class="form-error" role="alert"></div>
+        <p class="privacy-note">By continuing, you agree that Pratik Salon may use these details to manage this offer and contact you about your reward.</p>
+      </form>
+    </section>
+    <section class="game-panel scratch-panel" id="scratch-panel" hidden>
+      <div class="panel-heading">
+        <span class="step-label">02 / YOUR SURPRISE</span>
+        <h2 id="personal-heading">Your reward is ready.</h2>
+        <p>Rub the silver surface with your finger or mouse to reveal your discount.</p>
+      </div>
+      <div class="scratch-stage">
+        <div class="scratch-result" id="scratch-result">
+          <span class="result-kicker">A SPECIAL REWARD FOR</span>
+          <strong id="winner-name">YOU</strong>
+          <div class="discount-line"><span id="discount-number">5%</span><small>OFF</small></div>
+          <span class="result-footer">AT PRATIK SALON</span>
+        </div>
+        <canvas id="scratch-canvas" width="620" height="340" aria-label="Scratch this card to reveal your discount"></canvas>
+      </div>
+      <p class="scratch-hint" id="scratch-hint">✨ Scratch here to reveal your surprise</p>
+      <p class="result-terms">Show this screen at Pratik Salon to claim your discount. Offer terms may apply.</p>
+      <button class="text-button" id="start-again" type="button">Start a new entry</button>
+    </section>
+    <footer class="footer">
+      <div class="footer-brand">PRATIK SALON</div>
+      <p>Thank you for choosing us. We can’t wait to see you.</p>
+      <small>© <span id="year"></span> Pratik Salon. All rights reserved.</small>
+    </footer>
+  </main>
+</body>
+</html>
