@@ -8,7 +8,7 @@ const $ = (s, root = document) => root.querySelector(s);
 const esc = v => String(v == null ? "" : v).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const dateFmt = v => v ? new Intl.DateTimeFormat("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(v)) : "—";
 const dayStart = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
-const state = { member: null, projects: [], contacts: [], activities: [], view: "overview", query: "", projectId: "", stage: "all" };
+const state = { member: null, projects: [], contacts: [], activities: [], view: "overview", query: "", projectId: "", stage: "all", sourceFilter: "all", assigneeFilter: "all" };
 let mounted = false;
 
 async function allItems(collection) {
@@ -38,6 +38,8 @@ function leads() {
     rows = rows.filter(c => [c.leadId, c.businessName, c.company, c.contactPerson, c.phone, c.whatsapp, c.email, c.city, c.source, c.campaign, c.assignedTo].some(v => String(v || "").toLowerCase().includes(q)));
   }
   if (state.stage !== "all") rows = rows.filter(c => (c.status || "New Lead") === state.stage);
+  if (state.sourceFilter !== "all") rows = rows.filter(c => (c.source || "Unspecified") === state.sourceFilter);
+  if (state.assigneeFilter !== "all") rows = rows.filter(c => (c.assignedTo || "Unassigned") === state.assigneeFilter);
   return rows;
 }
 async function reload() {
@@ -108,14 +110,14 @@ function leadTable(rows) {
 function leadList() {
   const rows = leads();
   return head("LEAD MANAGEMENT", "All Leads", "Search and manage the full lead database.", '<button class="btn btn-primary" data-crm-action="new-lead">＋ Add lead</button>') +
-    '<div class="crm-filter-row"><input id="crm-search" class="input-control" placeholder="Search name, phone, company, lead ID…" value="' + esc(state.query) + '">' + projectSelect() + '<select id="crm-stage-filter" class="select-control"><option value="all">All stages</option>' + STAGES.map(s => '<option ' + (state.stage === s ? "selected" : "") + '>' + esc(s) + '</option>').join("") + '</select></div>' + leadTable(rows);
+    '<div class="crm-filter-row"><input id="crm-search" class="input-control" placeholder="Search name, phone, company, lead ID…" value="' + esc(state.query) + '">' + projectSelect() + '<select id="crm-stage-filter" class="select-control"><option value="all">All stages</option>' + STAGES.map(s => '<option ' + (state.stage === s ? "selected" : "") + '>' + esc(s) + '</option>').join("") + '</select><select id="crm-source-filter" class="select-control"><option value="all">All sources</option>' + [...new Set(state.contacts.map(c=>c.source||"Unspecified"))].map(x=>'<option value="'+esc(x)+'" '+(state.sourceFilter===x?"selected":"")+' >'+esc(x)+'</option>').join("") + '</select><select id="crm-assignee-filter" class="select-control"><option value="all">All assignees</option>' + [...new Set(state.contacts.map(c=>c.assignedTo||"Unassigned"))].map(x=>'<option value="'+esc(x)+'" '+(state.assigneeFilter===x?"selected":"")+' >'+esc(x)+'</option>').join("") + '</select></div>' + leadTable(rows);
 }
 function pipeline() {
   const rows = leads();
   return head("SALES OPERATIONS", "Lead Pipeline", "Move prospects through the sales process and record every change.", '<button class="btn btn-primary" data-crm-action="new-lead">＋ Add lead</button>') +
     '<div class="crm-filter-row">' + projectSelect() + '</div><div class="crm-board">' +
-    STAGES.map(s => '<section class="crm-stage"><header><b>' + esc(s) + '</b><span>' + rows.filter(c => c.status === s).length + '</span></header>' +
-      rows.filter(c => c.status === s).map(c => '<article class="crm-lead-card"><button class="crm-link" data-crm-action="detail" data-id="' + c.id + '">' + esc(c.businessName || c.contactPerson || "Unnamed") + '</button><small>' + esc(c.phone || "No phone") + '</small><div class="crm-card-bottom"><span>' + esc(c.priority || "Normal") + '</span><select class="select-control" data-crm-status="' + c.id + '"><option value="">Move to…</option>' + STAGES.map(x => '<option ' + (x === s ? "disabled" : "") + '>' + esc(x) + '</option>').join("") + '</select></div></article>').join("") + '</section>').join("") + '</div>';
+    STAGES.map(s => '<section class="crm-stage" data-drop-stage="' + esc(s) + '"><header><b>' + esc(s) + '</b><span>' + rows.filter(c => c.status === s).length + '</span></header>' +
+      rows.filter(c => c.status === s).map(c => '<article class="crm-lead-card" draggable="true" data-drag-lead="' + c.id + '"><button class="crm-link" data-crm-action="detail" data-id="' + c.id + '">' + esc(c.businessName || c.contactPerson || "Unnamed") + '</button><small>' + esc(c.phone || "No phone") + '</small><div class="crm-card-bottom"><span>' + esc(c.priority || "Normal") + '</span><select class="select-control" data-crm-status="' + c.id + '"><option value="">Move to…</option>' + STAGES.map(x => '<option ' + (x === s ? "disabled" : "") + '>' + esc(x) + '</option>').join("") + '</select></div></article>').join("") + '</section>').join("") + '</div>';
 }
 function followups(kind) {
   const rows = leads(), today = dayStart(), tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
@@ -279,7 +281,7 @@ function newLeadModal() {
     '<label>Mobile number *<input name="phone" required></label><label>WhatsApp number<input name="whatsapp"></label>' +
     '<label>Email<input name="email" type="email"></label><label>Company<input name="company"></label><label>City<input name="city"></label>' +
     '<label>Lead source<select name="source"><option>Manual</option><option>Instagram</option><option>Facebook Ads</option><option>Google</option><option>Website</option><option>Referral</option></select></label>' +
-    '<label>Campaign<input name="campaign"></label><label>Interested in<input name="category"></label><label>Assigned to<input name="assignedTo" placeholder="Employee email or name"></label>' +
+    '<label>Campaign<input name="campaign"></label><label>Interested in<input name="category"></label><label>Industry<input name="industry"></label><label>Website<input name="website" type="url"></label><label>Tags<input name="tags" placeholder="Hot, premium, referral"></label><label>Custom field 1<input name="customField1"></label><label>Custom field 2<input name="customField2"></label><label>Assigned to<input name="assignedTo" placeholder="Employee email or name"></label>' +
     '<label>Priority<select name="priority"><option>Normal</option><option>High</option><option>Low</option></select></label><label>Lead stage<select name="status">' + STAGES.map(s => '<option>' + s + '</option>').join("") + '</select></label>' +
     '<label>Next follow-up<input name="followUpAt" type="datetime-local"></label><label>Deal value (₹)<input name="dealValue" type="number" min="0"></label>' +
     '<label class="crm-wide">Address<input name="address"></label><label class="crm-wide">Notes<textarea name="remark"></textarea></label></div>' +
@@ -300,7 +302,7 @@ function detailModal(id) {
   const wa = String(c.whatsapp || c.phone || "").replace(/\D/g, "");
   const activity = state.activities.filter(a => a.contactId === id).sort((a, b) => new Date(b.happenedAt || 0) - new Date(a.happenedAt || 0)).slice(0, 12);
   openModal(c.businessName || c.contactPerson || "Lead profile", '<div class="crm-detail-grid">' +
-    [["Lead ID", c.leadId || c.srNo || id], ["Status", c.status], ["Phone", c.phone], ["WhatsApp", c.whatsapp || c.phone], ["Email", c.email], ["Company", c.company], ["City", c.city || c.area], ["Source", c.source], ["Campaign", c.campaign], ["Assigned to", c.assignedTo], ["Priority", c.priority], ["Follow-up", dateFmt(c.followUpAt)], ["Deal value", c.dealValue ? "₹" + c.dealValue : "—"], ["Payment status", c.paymentStatus]].map(x => '<div><small>' + x[0] + '</small><b>' + esc(x[1] || "—") + '</b></div>').join("") + '</div>' +
+    [["Lead ID", c.leadId || c.srNo || id], ["Status", c.status], ["Phone", c.phone], ["WhatsApp", c.whatsapp || c.phone], ["Email", c.email], ["Company", c.company], ["City", c.city || c.area], ["Source", c.source], ["Campaign", c.campaign], ["Assigned to", c.assignedTo], ["Priority", c.priority], ["Follow-up", dateFmt(c.followUpAt)], ["Deal value", c.dealValue ? "₹" + c.dealValue : "—"], ["Payment status", c.paymentStatus], ["Industry", c.industry], ["Website", c.website], ["Tags", c.tags], ["Custom field 1", c.customField1], ["Custom field 2", c.customField2]].map(x => '<div><small>' + x[0] + '</small><b>' + esc(x[1] || "—") + '</b></div>').join("") + '</div>' +
     '<div class="crm-modal-actions"><a class="btn btn-secondary" href="tel:' + esc(c.phone || "") + '">Call</a>' + (wa ? '<a class="btn btn-secondary" target="_blank" rel="noopener" href="https://wa.me/' + wa + '">WhatsApp</a>' : "") + '<button class="btn btn-primary" data-crm-action="call" data-id="' + id + '">＋ Log call</button></div>' +
     '<section class="crm-history"><b>Activity timeline</b>' + (activity.map(a => '<div><b>' + esc(a.callOutcome || a.newStatus || a.activityType) + '</b><small>' + dateFmt(a.happenedAt) + ' · ' + esc(a.remark || "") + '</small></div>').join("") || '<p>No activity yet.</p>') + '</section>');
 }
@@ -325,10 +327,11 @@ async function saveLead(form) {
     source: String(fd.get("source") || "Manual"),
     campaign: String(fd.get("campaign") || "").trim(),
     category: String(fd.get("category") || "").trim(),
+    industry: String(fd.get("industry") || "").trim(), website: String(fd.get("website") || "").trim(), tags: String(fd.get("tags") || "").trim(), customField1: String(fd.get("customField1") || "").trim(), customField2: String(fd.get("customField2") || "").trim(),
     assignedTo: String(fd.get("assignedTo") || state.member.loginEmail || ""),
     priority: String(fd.get("priority") || "Normal"),
     status: String(fd.get("status") || "New Lead"),
-    followUpAt: fd.get("followUpAt") ? new Date(fd.get("followUpAt")) : undefined,
+    followUpAt: fd.get("followUpAt") ? new Date(fd.get("followUpAt")) : ((state.projects.find(p=>p._id===projectId)?.automationRules||{}).autoFollow ? new Date(Date.now()+86400000) : undefined),
     dealValue: Number(fd.get("dealValue") || 0),
     address: String(fd.get("address") || "").trim(),
     remark: String(fd.get("remark") || "").trim(),
@@ -400,6 +403,8 @@ async function submit(e) {
 function change(e) {
   if (e.target.id === "crm-project-filter") { state.projectId = e.target.value; render(); }
   if (e.target.id === "crm-stage-filter") { state.stage = e.target.value || "all"; render(); }
+  if (e.target.id === "crm-source-filter") { state.sourceFilter = e.target.value || "all"; render(); }
+  if (e.target.id === "crm-assignee-filter") { state.assigneeFilter = e.target.value || "all"; render(); }
   if (e.target.matches("[data-automation-rule]")) saveAutomationRule(e.target.dataset.automationRule,e.target.checked).catch(err=>{e.target.checked=!e.target.checked;toast(err.message)});
   if (e.target.matches("[data-crm-status]")) { const id = e.target.dataset.crmStatus, next = e.target.value; e.target.value = ""; if (next) moveStage(id, next).catch(err => toast(err.message)); }
 }
@@ -426,6 +431,11 @@ function mount() {
   modal.innerHTML = '<section class="crm-modal"><header><div><span class="eyebrow">EKDANT LEADDESK</span><h2 id="crm-modal-title">CRM</h2></div><button class="icon-btn" data-crm-action="close">×</button></header><div id="crm-modal-content"></div></section>';
   document.body.append(modal);
   modal.addEventListener("click", e => { if (e.target === modal) closeModal(); });
+  
+  $("#crm-page").addEventListener("dragstart",e=>{const c=e.target.closest("[data-drag-lead]");if(c)e.dataTransfer.setData("text/plain",c.dataset.dragLead)});
+  $("#crm-page").addEventListener("dragover",e=>{if(e.target.closest("[data-drop-stage]"))e.preventDefault()});
+  $("#crm-page").addEventListener("drop",e=>{const lane=e.target.closest("[data-drop-stage]");if(!lane)return;e.preventDefault();const id=e.dataTransfer.getData("text/plain");if(id)moveStage(id,lane.dataset.dropStage).catch(err=>toast(err.message))});
+
   $("#crm-page").addEventListener("click", click);
   $("#crm-page").addEventListener("change", change);
   $("#crm-page").addEventListener("input", input);
