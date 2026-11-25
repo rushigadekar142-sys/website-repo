@@ -15,6 +15,7 @@
   <script type="module" src="/app.js"></script>
 </head>
 <body>
+  <a class="skip-link" href="#entry-panel">Skip to registration</a>
   <main class="page-shell">
     <header class="topbar">
       <a class="brand" href="/" aria-label="Pratik Salon home">
@@ -53,8 +54,8 @@
       </div>
       <form id="entry-form" class="entry-form">
         <div id="form-fields" class="form-fields"><div class="loading">Preparing your entry form…</div></div>
-        <div id="form-error" class="form-error" role="alert"></div>
-        <p class="privacy-note">By continuing, you agree that Pratik Salon may use these details to manage this offer and contact you about your reward.</p>
+        <div id="form-error" class="form-error" role="alert" aria-live="assertive"></div>
+        <p class="privacy-note">By continuing, you agree that Pratik Salon may use these details to manage this offer and contact you about your reward. <a href="#privacy-details">Privacy information</a> · <a href="#offer-terms">Offer terms</a></p>
       </form>
     </section>
     <section class="game-panel scratch-panel" id="scratch-panel" hidden>
@@ -64,13 +65,14 @@
         <p>Rub the silver surface with your finger or mouse to reveal your discount.</p>
       </div>
       <div class="scratch-stage">
-        <div class="scratch-result" id="scratch-result">
+        <div class="scratch-result" id="scratch-result" aria-hidden="true">
           <span class="result-kicker">A SPECIAL REWARD FOR</span>
           <strong id="winner-name">YOU</strong>
           <div class="discount-line"><span id="discount-number">5%</span><small>OFF</small></div>
           <span class="result-footer">AT PRATIK SALON</span>
         </div>
         <canvas id="scratch-canvas" width="620" height="340" aria-label="Scratch this card to reveal your discount"></canvas>
+        <button class="reveal-accessible" id="reveal-accessible" type="button">Reveal discount without scratching</button>
       </div>
       <p class="scratch-hint" id="scratch-hint">✨ Scratch here to reveal your surprise</p>
       <p class="result-terms">Show this screen at Pratik Salon to claim your discount. Offer terms may apply.</p>
@@ -80,6 +82,10 @@
       <div class="footer-brand">PRATIK SALON</div>
       <p>Thank you for choosing us. We can’t wait to see you.</p>
       <small>© <span id="year"></span> Pratik Salon. All rights reserved.</small>
+      <div class="legal-notes">
+        <p id="privacy-details"><strong>Privacy:</strong> Your name and mobile number are sent to Pratik Salon to manage this offer and contact you about your reward. Please enter only your own details.</p>
+        <p id="offer-terms"><strong>Offer terms:</strong> Present the revealed reward screen to Pratik Salon. Confirm eligible services and offer validity with the salon team before purchase.</p>
+      </div>
     </footer>
   </main>
 </body>
