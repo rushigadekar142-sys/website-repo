@@ -15,12 +15,13 @@ function emit(patch) {
 export function getMemberState() { return state; }
 
 async function resolveMember(user) {
-  const inviteToken = new URLSearchParams(window.location.search).get("invite");
+  const inviteToken = new URLSearchParams(window.location.search).get("invite") || localStorage.getItem("vistaar-pending-invite");
   if (inviteToken) {
     const { error } = await supabase.rpc("accept_workspace_invitation", { p_token: inviteToken });
     if (error) throw error;
     const url = new URL(window.location.href);
     url.searchParams.delete("invite");
+    localStorage.removeItem("vistaar-pending-invite");
     window.history.replaceState({}, "", url.pathname + url.search + url.hash);
   }
   let { data: memberships, error } = await supabase.from("workspace_members")
@@ -89,11 +90,15 @@ export async function login(email, password) {
 }
 export async function register(email, password, profile = {}) {
   pendingEmail = email.trim().toLowerCase();
+  const inviteToken = new URLSearchParams(window.location.search).get("invite");
+  if (inviteToken) localStorage.setItem("vistaar-pending-invite", inviteToken);
+  const callbackUrl = new URL("/auth/callback.html", window.location.origin);
+  if (inviteToken) callbackUrl.searchParams.set("invite", inviteToken);
   return resultFromAuth(await supabase.auth.signUp({
     email: pendingEmail, password,
     options: {
       data: { first_name: profile.firstName || "", last_name: profile.lastName || "", workspace_name: profile.workspaceName || "" },
-      emailRedirectTo: window.location.origin + "/auth/callback.html"
+      emailRedirectTo: callbackUrl.href
     }
   }));
 }
