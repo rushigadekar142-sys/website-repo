@@ -26,3 +26,7 @@ jobs:
         run: |
           node --check assets/app.js
           node --check assets/crm-suite.js
+          node --check js/wix/client.js
+          node --check js/wix/member-store.js
+          node --check js/wix/items.js
+          node --check cloudflare/worker.js
