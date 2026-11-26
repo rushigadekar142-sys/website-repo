@@ -1,6 +1,6 @@
-# Ekdant LeadDesk
+# VISTAAR CRM
 
-Ekdant LeadDesk is a browser-based lead and contact management CRM for Ekdant Digital Marketing.
+VISTAAR is a browser-based lead and contact management CRM workspace.
 
 ## Architecture
 
@@ -21,7 +21,7 @@ Ekdant LeadDesk is a browser-based lead and contact management CRM for Ekdant Di
 
 ## Wix backend
 
-The frontend uses the existing Wix Headless client and existing Wix CMS data. The main collections are:
+The frontend uses the existing Wix Headless client and existing Wix CMS data. The legacy Wix collection IDs are intentionally retained to preserve existing customer data during the VISTAAR rebrand:
 
 - `EkdantProjects`
 - `EkdantContacts`
