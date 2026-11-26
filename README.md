@@ -8,7 +8,7 @@ VISTAAR is a browser-based lead and contact management CRM workspace.
 - Authentication: Wix Headless OAuth, including Google sign-in with PKCE.
 - Data backend: Wix CMS collections.
 - Hosting: Vercel.
-- Production URL: https://ekdant-leaddesk.vercel.app
+- Production URL: https://vistaar-crm.vercel.app
 
 ## Source layout
 
@@ -27,10 +27,10 @@ The frontend uses the existing Wix Headless client and existing Wix CMS data. Th
 - `EkdantContacts`
 - `EkdantActivity`
 
-The Vercel production domain and exact OAuth callback URI are registered on the existing Wix Headless OAuth app:
+The Vercel production domain and exact OAuth callback URI are registered on the existing Wix Headless OAuth app. The previous domain remains registered for compatibility:
 
-- Allowed domain: `https://ekdant-leaddesk.vercel.app`
-- Callback URI: `https://ekdant-leaddesk.vercel.app/auth/callback.html`
+- Allowed domain: `https://vistaar-crm.vercel.app`
+- Callback URI: `https://vistaar-crm.vercel.app/auth/callback.html`
 
 Do not commit Wix access tokens, refresh tokens, client secrets, or API keys. The OAuth client ID in the browser configuration is a public client identifier, not a secret.
 
