@@ -196,7 +196,7 @@ export default {async fetch(req,env){
  if(!allowed)return out({error:"Origin not allowed"},403,cors);
  try{
   const u=await who(req,env);if(!u)return out({error:"Valid Wix member login required"},401,cors);if(u.denied)return out({error:"Wix member is not provisioned in this workspace"},403,cors);
-  const p=url.pathname.split("/").filter(Boolean),res=p[1],rid=p[3],limit=Math.min(200,Math.max(1,Number(url.searchParams.get("limit"))||50)),offset=Math.max(0,Number(url.searchParams.get("offset"))||0);
+  const p=url.pathname.split("/").filter(Boolean),res=p[1],rid=p[3]||p[2],limit=Math.min(200,Math.max(1,Number(url.searchParams.get("limit"))||50)),offset=Math.max(0,Number(url.searchParams.get("offset"))||0);
   if(res==="me"&&req.method==="GET")return out({member:{id:u.m.id,email:u.m.loginEmail,name:u.display_name||u.m.profile?.nickname||"",role:u.role},workspace:{id:u.workspace_id,name:u.workspace_name,slug:u.workspace_slug}},200,cors);
   if(res==="collections"){
    const collection=decodeURIComponent(p[2]||""),kind=COLLECTIONS[collection];
