@@ -32,6 +32,8 @@ import { NO_SESSION_ERROR, authOutcome, failure, loginErrorCode, registerErrorCo
 /** register() carries first/last name on this transport. */
 export const PROFILE_ON_SIGNUP = true;
 const REDIRECT_SESSION = "/headless/v1/redirect-session";
+const GOOGLE_REDIRECT_SESSION = "/_api/redirects-api/v1/redirect-session";
+const CANONICAL_APP_ORIGIN = "https://ekdant-leaddesk.vercel.app";
 /** The stateToken of a login/registration that stopped at email verification — verifyMemberEmail continues it. */
 let pendingStateToken = null;
 /** True when the persisted token set is a member's (no network) — the store skips the profile read when false. */
@@ -228,7 +230,15 @@ async function pkce() {
  * Uses the published site's registered callback URI, PKCE and an OAuth state token.
  */
 export async function startGoogleLogin(returnTo = "/") {
-    const base = window.location.origin;
+    // Wix has an exact callback registered for the canonical production hostname.
+    // Preview aliases must move there first so localStorage and the callback share one origin.
+    if (window.location.origin !== CANONICAL_APP_ORIGIN) {
+        const canonical = new URL("/", CANONICAL_APP_ORIGIN);
+        canonical.searchParams.set("startGoogleLogin", "1");
+        window.location.replace(canonical.href);
+        return;
+    }
+    const base = CANONICAL_APP_ORIGIN;
     const redirectUri = new URL("/auth/callback.html", base).href;
     const { verifier, challenge } = await pkce();
     const state = randomString();
@@ -241,7 +251,7 @@ export async function startGoogleLogin(returnTo = "/") {
         startedAt: Date.now()
     }));
     const visitor = await accessVisitorToken();
-    const response = await wixRequest(REDIRECT_SESSION, {
+    const response = await wixRequest(GOOGLE_REDIRECT_SESSION, {
         body: {
             auth: {
                 authRequest: {
