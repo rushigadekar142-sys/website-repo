@@ -58,25 +58,15 @@ function leads() {
   if (state.stage !== "all") rows = rows.filter(c => (c.status || "New Lead") === state.stage);
   if (state.sourceFilter !== "all") rows = rows.filter(c => (c.source || "Unspecified") === state.sourceFilter);
   if (state.assigneeFilter !== "all") rows = rows.filter(c => (c.assignedTo || "Unassigned") === state.assigneeFilter);
-  const dateValue = c => {
-    const raw = state.sortBy === "updated" ? (c._updatedDate || c.updatedAt || c.statusChangedAt || c._createdDate || c.importedAt) :
-      state.sortBy === "followUp" ? c.followUpAt : (c._createdDate || c.importedAt || c.createdAt);
-    const n = raw ? new Date(raw).getTime() : NaN;
-    return Number.isFinite(n) ? n : null;
-  };
-  const collator = new Intl.Collator("en", { sensitivity: "base", numeric: true });
-  rows.sort((a, b) => {
-    let cmp = 0;
-    if (state.sortBy === "name") cmp = collator.compare(a.businessName || a.contactPerson || "", b.businessName || b.contactPerson || "");
-    else if (state.sortBy === "phone") cmp = collator.compare(a.phone || "", b.phone || "");
-    else if (state.sortBy === "status") cmp = collator.compare(a.status || "", b.status || "");
-    else {
-      const av = dateValue(a), bv = dateValue(b);
-      if (av == null || bv == null) return av == null ? (bv == null ? 0 : 1) : -1;
-      cmp = av - bv;
-    }
-    return state.sortDirection === "asc" ? cmp : -cmp;
-  });
+  const key = state.sortKey || "created", dir = state.sortDir === "asc" ? 1 : -1;
+  const value = c => key === "name" ? String(c.businessName || c.contactPerson || "").toLocaleLowerCase()
+    : key === "created" ? (new Date(c._createdDate || c.createdAt || c.importedAt || 0).getTime() || 0)
+    : key === "followup" ? (new Date(c.followUpAt || 0).getTime() || 0)
+    : key === "stage" ? String(c.status || "New Lead").toLocaleLowerCase()
+    : key === "assignee" ? String(c.assignedTo || "Unassigned").toLocaleLowerCase()
+    : key === "leadId" ? String(c.leadId || c.srNo || "").toLocaleLowerCase()
+    : String(c[key] || "").toLocaleLowerCase();
+  rows.sort((a,b) => { const av=value(a), bv=value(b); const cmp = typeof av === "number" && typeof bv === "number" ? av-bv : String(av).localeCompare(String(bv), "en", {numeric:true,sensitivity:"base"}); return cmp * dir; });
   return rows;
 }
 async function reload() {
