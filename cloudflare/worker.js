@@ -128,7 +128,8 @@ async function listCollection(env,u,kind,url){
 async function createCollection(env,u,kind,body){
  const d=cleanData(body?.data??body),rid=id(),at=now();
  if(kind==="projects"){
-  if(!GLOBAL_WRITE.has(u.role))return {error:"Only workspace owners and administrators can create projects",status:403};
+  const owned=(await projectsFor(env,u)).some(x=>x.role==="owner");
+  if(!GLOBAL_WRITE.has(u.role)&&!owned)return {error:"Only workspace owners and project owners can create projects",status:403};
   d._id=rid;d.createdBy=emailKey(u.m.loginEmail);d.memberEmails=Array.isArray(d.memberEmails)?d.memberEmails:[];d._createdDate=at;d._updatedDate=at;
   await env.DB.prepare("INSERT INTO projects(id,workspace_id,wix_id,name,description,owner_member_id,member_emails_json,data_json) VALUES(?,?,?,?,?,?,?,?)").bind(rid,u.workspace_id,rid,String(d.name||"Untitled project").slice(0,200),String(d.description||"").slice(0,2000),u.mid,JSON.stringify(d.memberEmails),JSON.stringify(d)).run();
   await log(env,u,"create","project",rid);return {item:dataFor("projects",await env.DB.prepare("SELECT * FROM projects WHERE id=?").bind(rid).first()),created:true};
