@@ -128,6 +128,7 @@ async function listCollection(env,u,kind,url){
  }
  if(!ids.length)return {items:[],total:0,limit,offset,hasNext:false};
  const where=["workspace_id=?","project_id IN ("+ids.map(()=>"?").join(",")+")"],params=[u.workspace_id,...ids];
+ if(kind==="contacts")where.push("deleted_at IS NULL");
  const project=url.searchParams.get("project_id"),status=url.searchParams.get("status"),q=(url.searchParams.get("q")||"").trim().slice(0,100);
  if(project&&ids.includes(project)){where.push("project_id=?");params.push(project)}
  if(status&&kind==="contacts"){where.push("status=?");params.push(status)}
@@ -215,6 +216,24 @@ export default {async fetch(req,env){
   const u=await who(req,env);if(!u)return out({error:"Valid Wix member login required"},401,cors);if(u.denied)return out({error:"Wix member is not provisioned in this workspace"},403,cors);
   const p=url.pathname.split("/").filter(Boolean),res=p[1],rid=p[3]||p[2],limit=Math.min(200,Math.max(1,Number(url.searchParams.get("limit"))||50)),offset=Math.max(0,Number(url.searchParams.get("offset"))||0);
   if(res==="me"&&req.method==="GET")return out({member:{id:u.m.id,email:u.m.loginEmail,name:u.display_name||u.m.profile?.nickname||"",role:u.role},workspace:{id:u.workspace_id,name:u.workspace_name,slug:u.workspace_slug}},200,cors);
+  if(res==="trash"&&req.method==="GET"){
+   const access=await projectsFor(env,u),ids=access.map(x=>x.row.id);if(!ids.length)return out({items:[],total:0},200,cors);
+   const rows=await env.DB.prepare("SELECT * FROM contacts WHERE workspace_id=? AND deleted_at IS NOT NULL AND project_id IN ("+ids.map(()=>"?").join(",")+") ORDER BY deleted_at DESC LIMIT ? OFFSET ?").bind(u.workspace_id,...ids,limit,offset).all();
+   const count=await env.DB.prepare("SELECT COUNT(*) AS total FROM contacts WHERE workspace_id=? AND deleted_at IS NOT NULL AND project_id IN ("+ids.map(()=>"?").join(",")+")").bind(u.workspace_id,...ids).first();
+   return out({items:(rows.results||[]).map(x=>({...dataFor("contacts",x),deletedAt:x.deleted_at,deletedBy:x.deleted_by})),total:count?.total||0},200,cors);
+  }
+  if(res==="trash"&&p[3]==="restore"&&req.method==="POST"){
+   const row=await env.DB.prepare("SELECT * FROM contacts WHERE id=? AND workspace_id=? AND deleted_at IS NOT NULL").bind(p[2],u.workspace_id).first();
+   if(!row||!(await canEditProject(env,u,row.project_id)))return out({error:"Trashed lead not found or restore access denied"},404,cors);
+   await env.DB.prepare("UPDATE contacts SET deleted_at=NULL,deleted_by=NULL,updated_at=? WHERE id=? AND workspace_id=?").bind(now(),p[2],u.workspace_id).run();
+   await log(env,u,"restore","contact",p[2]);return out({restored:true},200,cors);
+  }
+  if(res==="contacts"&&p[3]==="trash"&&req.method==="POST"){
+   const row=await env.DB.prepare("SELECT * FROM contacts WHERE id=? AND workspace_id=? AND deleted_at IS NULL").bind(p[2],u.workspace_id).first();
+   if(!row||!(await canEditProject(env,u,row.project_id)))return out({error:"Lead not found or delete access denied"},404,cors);
+   const at=now();await env.DB.prepare("UPDATE contacts SET deleted_at=?,deleted_by=?,updated_at=? WHERE id=? AND workspace_id=?").bind(at,u.mid,at,p[2],u.workspace_id).run();
+   await log(env,u,"trash","contact",p[2]);return out({trashed:true,deletedAt:at},200,cors);
+  }
   if(res==="collections"){
    const collection=decodeURIComponent(p[2]||""),kind=COLLECTIONS[collection];
    if(!kind)return out({error:"Unknown CRM collection"},404,cors);
