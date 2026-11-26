@@ -629,6 +629,14 @@ function click(e) {
     if (a === "export") exportCsv();
     if (a === "sort-direction") { state.sortDirection = state.sortDirection === "asc" ? "desc" : "asc"; render(); }
   }
+  const sort = e.target.closest("[data-crm-sort]");
+  if (sort) {
+    const key = sort.dataset.crmSort;
+    state.sortDir = state.sortKey === key && state.sortDir === "asc" ? "desc" : "asc";
+    state.sortKey = key;
+    render();
+    return;
+  }
   const nav = e.target.closest("[data-crm-nav]");
   if (nav) setView(nav.dataset.crmNav);
 }
