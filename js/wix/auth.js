@@ -33,7 +33,7 @@ import { NO_SESSION_ERROR, authOutcome, failure, loginErrorCode, registerErrorCo
 export const PROFILE_ON_SIGNUP = true;
 const REDIRECT_SESSION = "/headless/v1/redirect-session";
 const GOOGLE_REDIRECT_SESSION = "/_api/redirects-api/v1/redirect-session";
-const CANONICAL_APP_ORIGIN = "https://ekdant-leaddesk.vercel.app";
+const CANONICAL_APP_ORIGIN = "https://vistaar-crm.vercel.app";
 /** The stateToken of a login/registration that stopped at email verification — verifyMemberEmail continues it. */
 let pendingStateToken = null;
 /** True when the persisted token set is a member's (no network) — the store skips the profile read when false. */
