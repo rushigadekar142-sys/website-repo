@@ -152,7 +152,7 @@ function leadTable(rows) {
 }
 function leadList() {
   const rows = leads();
-  return head("LEAD MANAGEMENT", "All Leads", "Search and manage the full lead database.", '<button class="btn btn-primary" data-crm-action="new-lead">＋ Add lead</button>') +
+  return head("LEAD MANAGEMENT", "All Leads", "Search and manage the full lead database.", '<button class="btn btn-secondary" data-crm-action="import">⇧ Import CSV / Excel</button><button class="btn btn-primary" data-crm-action="new-lead">＋ Add lead</button>') + '<input id="crm-import-file" type="file" accept=".csv,.tsv,.xlsx,.xls" hidden>' +
     '<div class="crm-filter-row"><input id="crm-search" class="input-control" placeholder="Search name, phone, company, lead ID…" value="' + esc(state.query) + '">' + projectSelect() + '<select id="crm-stage-filter" class="select-control"><option value="all">All stages</option>' + STAGES.map(s => '<option ' + (state.stage === s ? "selected" : "") + '>' + esc(s) + '</option>').join("") + '</select><select id="crm-source-filter" class="select-control"><option value="all">All sources</option>' + [...new Set(state.contacts.map(c=>c.source||"Unspecified"))].map(x=>'<option value="'+esc(x)+'" '+(state.sourceFilter===x?"selected":"")+' >'+esc(x)+'</option>').join("") + '</select><select id="crm-assignee-filter" class="select-control"><option value="all">All assignees</option>' + [...new Set(state.contacts.map(c=>c.assignedTo||"Unassigned"))].map(x=>'<option value="'+esc(x)+'" '+(state.assigneeFilter===x?"selected":"")+' >'+esc(x)+'</option>').join("") + '</select></div>' + leadTable(rows);
 }
 function pipeline() {
@@ -477,6 +477,89 @@ async function moveStage(id, next) {
   await insertItem(COL.activity, { projectId: c.projectId, contactId: id, activityType: "Status change", oldStatus: c.status || "New Lead", newStatus: next, actorEmail: state.member.loginEmail || "", actorName: state.member.displayName || "", happenedAt: at });
   await reload(); toast("Lead moved to " + next);
 }
+function normalizeImportHeader(value) {
+  return String(value || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+function importValue(row, aliases) {
+  const wanted = new Set(aliases);
+  for (const [key, value] of Object.entries(row)) if (wanted.has(normalizeImportHeader(key))) return value;
+  return "";
+}
+function parseImportDate(value) {
+  if (!value) return undefined;
+  const direct = new Date(value);
+  if (!Number.isNaN(direct.getTime())) return direct;
+  const m = String(value).trim().match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})$/);
+  if (!m) return undefined;
+  let year = Number(m[3]); if (year < 100) year += 2000;
+  const date = new Date(year, Number(m[2]) - 1, Number(m[1]));
+  return Number.isNaN(date.getTime()) ? undefined : date;
+}
+async function importSpreadsheet(file) {
+  const projects = allowedProjects().filter(p => ["owner", "editor"].includes(role(p)));
+  const projectId = state.projectId || (projects.length === 1 ? projects[0]._id : "");
+  if (!projectId || !projects.some(p => p._id === projectId)) throw new Error("Select an editable project before importing.");
+  if (!window.XLSX) throw new Error("The spreadsheet reader is not available. Export the file as CSV and try again.");
+  const bytes = await file.arrayBuffer();
+  const workbook = window.XLSX.read(bytes, { type: "array", cellDates: true });
+  const sheet = workbook.Sheets[workbook.SheetNames[0]];
+  const rows = window.XLSX.utils.sheet_to_json(sheet, { defval: "", raw: false });
+  if (!rows.length) throw new Error("The selected file has no lead rows.");
+  const known = new Set(state.contacts.filter(c => c.projectId === projectId).map(c => String(c.phone || "").replace(/\D/g, "")).filter(Boolean));
+  let imported = 0, skipped = 0, failed = 0;
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i], phone = String(importValue(row, ["phone", "mobile", "mobilenumber", "phonenumber", "contactnumber", "telephone"]) || "").trim();
+    const normalized = phone.replace(/\D/g, "");
+    if (!normalized || known.has(normalized)) { skipped++; continue; }
+    const followUp = parseImportDate(importValue(row, ["followup", "followupdate", "nextfollowup", "followupat"]));
+    const dealValue = Number(String(importValue(row, ["dealvalue", "value", "budget", "amount"]) || "0").replace(/[₹,\s]/g, "")) || 0;
+    const payload = {
+      projectId,
+      leadId: String(importValue(row, ["leadid", "id", "srno"]) || ("EKD-" + Date.now().toString().slice(-7) + "-" + (i + 1))),
+      businessName: String(importValue(row, ["businessname", "business", "organization", "companyname", "leadname", "name"]) || "").trim(),
+      contactPerson: String(importValue(row, ["contactperson", "contactname", "fullname", "person"]) || "").trim(),
+      phone,
+      phoneNormalized: normalized,
+      whatsapp: String(importValue(row, ["whatsapp", "whatsappnumber", "wa"]) || "").trim(),
+      email: String(importValue(row, ["email", "emailaddress"]) || "").trim(),
+      company: String(importValue(row, ["company", "organizationname"]) || "").trim(),
+      city: String(importValue(row, ["city", "town"]) || "").trim(),
+      area: String(importValue(row, ["area", "locality", "location"]) || "").trim(),
+      address: String(importValue(row, ["address", "fulladdress"]) || "").trim(),
+      source: String(importValue(row, ["source", "leadsource", "platform"]) || "Spreadsheet Import").trim(),
+      campaign: String(importValue(row, ["campaign", "campaignname"]) || "").trim(),
+      category: String(importValue(row, ["category", "interest", "service"]) || "").trim(),
+      industry: String(importValue(row, ["industry", "businesscategory"]) || "").trim(),
+      website: String(importValue(row, ["website", "url"]) || "").trim(),
+      assignedTo: String(importValue(row, ["assignedto", "assignee", "owner"]) || state.member.loginEmail || "").trim(),
+      status: String(importValue(row, ["status", "stage", "leadstatus"]) || "New Lead").trim(),
+      priority: String(importValue(row, ["priority"]) || "Normal").trim(),
+      followUpAt: followUp,
+      dealValue,
+      remark: String(importValue(row, ["remark", "notes", "comments", "description"]) || "").trim(),
+      importedAt: new Date(),
+      statusChangedAt: new Date(),
+      doNotContact: false
+    };
+    try {
+      await insertItem(COL.contacts, payload);
+      known.add(normalized);
+      imported++;
+    } catch (e) {
+      failed++;
+    }
+  }
+  if (imported) await insertItem(COL.activity, {
+    projectId,
+    activityType: "Bulk import",
+    actorEmail: state.member.loginEmail || "",
+    actorName: state.member.displayName || "",
+    happenedAt: new Date(),
+    remark: imported + " leads imported from " + file.name
+  });
+  await reload();
+  toast(imported + " leads imported · " + skipped + " skipped · " + failed + " failed");
+}
 function exportCsv() {
   const keys = ["leadId", "businessName", "contactPerson", "phone", "whatsapp", "email", "company", "city", "source", "campaign", "assignedTo", "status", "priority", "followUpAt", "dealValue"];
   const csv = [keys.join(","), ...leads().map(c => keys.map(k => '"' + String(c[k] == null ? "" : c[k]).replace(/"/g, '""') + '"').join(","))].join("\r\n");
@@ -488,6 +571,7 @@ function click(e) {
   if (b) {
     const a = b.dataset.crmAction;
     if (a === "new-project") newProjectModal();
+    if (a === "import") $("#crm-import-file")?.click();
     if (a === "new-task") newTaskModal();
     if (a === "new-lead") newLeadModal();
     if (a === "new-activity") newActivityModal();
@@ -517,6 +601,7 @@ async function submit(e) {
   }
 }
 function change(e) {
+  if (e.target.id === "crm-import-file" && e.target.files && e.target.files[0]) { const file = e.target.files[0]; importSpreadsheet(file).catch(err => toast("Import failed: " + err.message)).finally(() => { e.target.value = ""; }); }
   if (e.target.id === "crm-project-filter") { state.projectId = e.target.value; render(); }
   if (e.target.id === "crm-stage-filter") { state.stage = e.target.value || "all"; render(); }
   if (e.target.id === "crm-source-filter") { state.sourceFilter = e.target.value || "all"; render(); }
