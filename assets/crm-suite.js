@@ -109,7 +109,7 @@ function overview() {
   const sourceCounts = {};
   rows.forEach(c => { const k = c.source || "Unspecified"; sourceCounts[k] = (sourceCounts[k] || 0) + 1; });
   const recent = state.activities.slice().sort((a, b) => new Date(b.happenedAt || 0) - new Date(a.happenedAt || 0)).slice(0, 6);
-  return head("CRM OVERVIEW", "Ekdant LeadDesk", "Your sales activity, lead pipeline and follow-ups in one workspace.", '<button class="btn btn-secondary" data-crm-nav="pipeline">Open pipeline</button><button class="btn btn-primary" data-crm-action="new-lead">＋ Add lead</button>') +
+  return head("CRM OVERVIEW", "Ekdant LeadDesk", "Your sales activity, lead pipeline and follow-ups in one workspace.", '<button class="btn btn-secondary" data-crm-action="new-project">＋ New project</button><button class="btn btn-secondary" data-crm-nav="pipeline">Open pipeline</button><button class="btn btn-primary" data-crm-action="new-lead">＋ Add lead</button>') +
     '<div class="crm-filter-row">' + projectSelect() + '<span class="crm-muted">' + rows.length + ' leads across ' + allowedProjects().length + ' projects</span></div>' +
     '<div class="crm-stats">' +
     stat("Total Leads", rows.length, "All active records", "leads") +
@@ -299,6 +299,16 @@ function openModal(title, content) {
   $("#crm-modal").classList.add("open");
 }
 function closeModal() { $("#crm-modal").classList.remove("open"); }
+function newProjectModal() {
+  if (!allowedProjects().some(p => role(p) === "owner")) {
+    toast("Only a workspace owner can create a project.");
+    return;
+  }
+  openModal("Create project", '<form id="crm-project-form"><div class="crm-form-grid">' +
+    '<label>Project name *<input name="name" required maxlength="120" placeholder="e.g. Ekdant Digital Marketing"></label>' +
+    '<label class="crm-wide">Description<textarea name="description" maxlength="1000" placeholder="What is this project for?"></textarea></label>' +
+    '</div><div class="crm-modal-actions"><button type="button" class="btn btn-secondary" data-crm-action="close">Cancel</button><button class="btn btn-primary">Create project</button></div></form>');
+}
 function newLeadModal() {
   const editable = allowedProjects().filter(p => ["owner", "editor"].includes(role(p)));
   if (!editable.length) { toast("No editable project is available for this account."); return; }
@@ -336,6 +346,22 @@ function detailModal(id) {
 }
 function statusForOutcome(outcome) {
   return ({ "Interested": "Interested", "Not Interested": "Not Interested", "No Answer": "Not Picked", "Busy": "Not Picked", "Switch Off": "Not Picked", "Wrong Number": "Wrong Number", "Call Back Later": "Attempted", "Meeting Scheduled": "Connected", "Converted": "Converted / Won", "Lost": "Lost" })[outcome] || "Attempted";
+}
+async function saveProject(form) {
+  if (!allowedProjects().some(p => role(p) === "owner")) throw new Error("Only a workspace owner can create a project.");
+  const fd = new FormData(form);
+  const name = String(fd.get("name") || "").trim();
+  if (!name) throw new Error("A project name is required.");
+  const project = await insertItem(COL.projects, {
+    name,
+    description: String(fd.get("description") || "").trim(),
+    createdBy: state.member.loginEmail || "",
+    memberEmails: []
+  });
+  state.projectId = project._id;
+  closeModal();
+  await reload();
+  toast("Project created successfully.");
 }
 async function saveLead(form) {
   const fd = new FormData(form), projectId = String(fd.get("projectId") || "");
@@ -403,6 +429,7 @@ function click(e) {
   const b = e.target.closest("[data-crm-action]");
   if (b) {
     const a = b.dataset.crmAction;
+    if (a === "new-project") newProjectModal();
     if (a === "new-lead") newLeadModal();
     if (a === "new-activity") newActivityModal();
     if (a === "manage-access") manageAccess(b.dataset.id);
@@ -415,6 +442,7 @@ function click(e) {
   if (nav) setView(nav.dataset.crmNav);
 }
 async function submit(e) {
+  if (e.target.id === "crm-project-form") { e.preventDefault(); const button = e.target.querySelector('button[type="submit"]'); if (button) { button.disabled = true; button.textContent = "Creating…"; } try { await saveProject(e.target); } catch (err) { if (button) { button.disabled = false; button.textContent = "Create project"; } toast("Project not created: " + err.message); } }
   if (e.target.id === "crm-lead-form") {
     e.preventDefault(); const button = e.target.querySelector('button[type="submit"]');
     if (button) { button.disabled = true; button.textContent = "Saving…"; }
