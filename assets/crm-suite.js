@@ -47,7 +47,7 @@ function role(p) {
   return share ? String(share).split("::")[1] || "viewer" : "none";
 }
 function allowedProjects() { return state.projects.filter(p => role(p) !== "none"); }
-function leads() {
+function leads(ignoreStage = false) {
   const ids = new Set(allowedProjects().map(p => p._id));
   let rows = state.contacts.filter(c => ids.has(c.projectId));
   if (state.projectId) rows = rows.filter(c => c.projectId === state.projectId);
@@ -55,7 +55,7 @@ function leads() {
     const q = state.query.toLowerCase();
     rows = rows.filter(c => [c.leadId, c.businessName, c.company, c.contactPerson, c.phone, c.whatsapp, c.email, c.city, c.source, c.campaign, c.assignedTo].some(v => String(v || "").toLowerCase().includes(q)));
   }
-  if (state.stage !== "all") rows = rows.filter(c => (c.status || "New Lead") === state.stage);
+  if (!ignoreStage && state.stage !== "all") rows = rows.filter(c => (c.status || "New Lead") === state.stage);
   if (state.sourceFilter !== "all") rows = rows.filter(c => (c.source || "Unspecified") === state.sourceFilter);
   if (state.assigneeFilter !== "all") rows = rows.filter(c => (c.assignedTo || "Unassigned") === state.assigneeFilter);
   const key = state.sortKey || "created", dir = state.sortDir === "asc" ? 1 : -1;
@@ -171,6 +171,14 @@ function leadList() {
   const rows = leads();
   return head("LEAD MANAGEMENT", "All Leads", "Search and manage the full lead database.", '<button class="btn btn-secondary" data-crm-action="import">⇧ Import CSV / Excel</button><button class="btn btn-primary" data-crm-action="new-lead">＋ Add lead</button>') + '<input id="crm-import-file" type="file" accept=".csv,.tsv,.xlsx,.xls" hidden>' +
     '<div class="crm-filter-row"><input id="crm-search" class="input-control" placeholder="Search name, phone, company, lead ID…" value="' + esc(state.query) + '">' + projectSelect() + '<select id="crm-stage-filter" class="select-control"><option value="all">All stages</option>' + STAGES.map(s => '<option ' + (state.stage === s ? "selected" : "") + '>' + esc(s) + '</option>').join("") + '</select><select id="crm-source-filter" class="select-control"><option value="all">All sources</option>' + [...new Set(state.contacts.map(c=>c.source||"Unspecified"))].map(x=>'<option value="'+esc(x)+'" '+(state.sourceFilter===x?"selected":"")+' >'+esc(x)+'</option>').join("") + '</select><select id="crm-assignee-filter" class="select-control"><option value="all">All assignees</option>' + [...new Set(state.contacts.map(c=>c.assignedTo||"Unassigned"))].map(x=>'<option value="'+esc(x)+'" '+(state.assigneeFilter===x?"selected":"")+' >'+esc(x)+'</option>').join("") + '</select><select id="crm-sort" class="select-control" aria-label="Sort leads"><option value="created" ' + (state.sortBy === "created" ? "selected" : "") + '>Sort: Date added</option><option value="updated" ' + (state.sortBy === "updated" ? "selected" : "") + '>Sort: Last updated</option><option value="name" ' + (state.sortBy === "name" ? "selected" : "") + '>Sort: Name</option><option value="followUp" ' + (state.sortBy === "followUp" ? "selected" : "") + '>Sort: Follow-up date</option><option value="phone" ' + (state.sortBy === "phone" ? "selected" : "") + '>Sort: Phone</option><option value="status" ' + (state.sortBy === "status" ? "selected" : "") + '>Sort: Stage</option></select><button class="btn btn-secondary" type="button" data-crm-action="sort-direction">' + (state.sortDirection === "asc" ? "Ascending ↑" : "Descending ↓") + '</button><span class="crm-muted" aria-live="polite">Showing all ' + rows.length + ' matching leads · ' + state.contacts.length + ' loaded</span></div>' + (rows.length ? leadTable(rows) : '<section class="panel crm-empty"><b>No matching leads</b><p>Change the search or filters to see more records.</p></section>');
+}
+function segmentList(kind) {
+  const won = kind === "customers";
+  const rows = leads(true).filter(c => won ? c.status === "Converted / Won" : ["Lost", "Not Interested"].includes(c.status));
+  const title = won ? "Converted Customers" : "Lost Leads";
+  return head("LEAD OUTCOMES", title, won ? "Every successfully converted lead, with its call history available from the lead profile." : "Closed or not-interested leads, retained for future reference.", '<button class="btn btn-secondary" data-crm-nav="leads">All Leads</button>') +
+    '<div class="crm-filter-row">' + projectSelect() + '<span class="crm-muted">' + rows.length + ' records</span></div>' +
+    (rows.length ? leadTable(rows) : '<section class="panel crm-empty"><b>No records in this group</b><p>There are no matching leads yet.</p></section>');
 }
 function pipeline() {
   const rows = leads();
@@ -346,6 +354,7 @@ function render() {
     state.view === "pipeline" ? pipeline() :
     state.view === "due" || state.view === "upcoming" || state.view === "overdue" ? followups(state.view) :
     state.view === "calls" ? calls() :
+    state.view === "customers" || state.view === "lost" ? segmentList(state.view) :
     state.view === "companies" ? companies() :
     state.view === "activities" ? activitiesView() :
     state.view === "tasks" ? taskView() :
@@ -719,6 +728,7 @@ function mount() {
     nav.append(group);
     const navItems = [
       ["overview", "CRM Overview", "◫"], ["leads", "All Leads", "☷"],
+      ["customers", "Converted Customers", "✓"], ["lost", "Lost Leads", "⊘"],
       ["pipeline", "Deal Pipeline", "▥"], ["companies", "Companies", "▦"],
       ["due", "Due Today", "◷"], ["upcoming", "Upcoming", "↗"],
       ["overdue", "Overdue", "!"], ["calls", "Call History", "☎"],
