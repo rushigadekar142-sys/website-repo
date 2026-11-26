@@ -67,7 +67,7 @@ export async function patchItemFields(collectionId, itemId, fields) {
   const table = tableFor(collectionId);
   const { data: existing, error: readError } = await supabase.from(table).select("*").eq("id", itemId).eq("workspace_id", member.workspaceId).single();
   if (readError) throw readError;
-  const patch = clean(fields || {}), updates = { data: { ...(existing.data || {}), ...patch }, updated_at: new Date().toISOString() };
+  const patch = clean(fields || {});\n  // Wix-style metadata is projected from Supabase columns and must never be persisted inside JSONB.\n  for (const key of ["_id", "id", "_createdDate", "_updatedDate", "_owner"]) delete patch[key];\n  const updates = { data: { ...(existing.data || {}), ...patch }, updated_at: new Date().toISOString() };
   if (collectionId === "EkdantContacts") {
     if (Object.prototype.hasOwnProperty.call(patch, "phone")) updates.phone_normalized = String(patch.phone || "").replace(/\D/g, "") || null;
     if (Object.prototype.hasOwnProperty.call(patch, "email")) updates.email_normalized = String(patch.email || "").trim().toLowerCase() || null;
