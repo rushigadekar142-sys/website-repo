@@ -97,3 +97,42 @@ body:before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;opac
 @media(prefers-reduced-motion:reduce){.analytics-meter-track i{transition:none}}
 
 .crm-company-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}.crm-company-card h3{font-size:14px;color:#20392c;margin:0 0 12px}.crm-company-people{display:flex;flex-direction:column;gap:7px;border-top:1px solid #edf2ee;margin-top:14px;padding-top:12px}.crm-activity-item{padding:14px 0;border-bottom:1px solid #edf1ee}.crm-activity-item b{font-size:11px;color:#294234}.crm-activity-item p{font-size:10px;color:#718178;margin:5px 0}.crm-activity-item small{font-size:9px;color:#9aa69f}.crm-team-project{display:flex;align-items:center;gap:14px;justify-content:space-between;padding:14px 0;border-bottom:1px solid #edf1ee}.crm-team-project b,.crm-team-project small{display:block}.crm-team-project b{font-size:11px;color:#294234}.crm-team-project small{font-size:9px;color:#96a39a;margin-top:4px}.crm-member-chip{font-size:9px;padding:5px 8px;border-radius:20px;background:#f0f6f2;color:#547262}.crm-security-note{margin-top:18px;padding:14px;border-radius:12px;background:#fff8eb;border:1px solid #f1e3c5;color:#7c6338}.crm-security-note p{font-size:9px;line-height:1.7;margin:6px 0 0}.crm-rule-row{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:16px 0;border-bottom:1px solid #edf1ee}.crm-rule-row b,.crm-rule-row small{display:block}.crm-rule-row b{font-size:11px;color:#294234}.crm-rule-row small{font-size:9px;color:#92a097;margin-top:5px}.crm-rule-row input{width:18px;height:18px;accent-color:#14815e}.crm-rule-footnote{font-size:9px;line-height:1.7;margin-top:16px}@media(max-width:1050px){.crm-company-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:700px){.crm-company-grid{grid-template-columns:1fr}.crm-team-project{align-items:flex-start;flex-direction:column}}
+
+
+/* VISTAAR desktop browser layout — desktop-first workspace */
+@media (min-width:761px){
+  html,body{min-width:0;width:100%;overflow-x:hidden}
+  .app-shell{width:100%;min-height:100vh;align-items:stretch;gap:18px;padding:18px}
+  .sidebar{flex:0 0 248px;width:248px;min-width:248px;height:calc(100vh - 36px);min-height:calc(100vh - 36px);position:sticky;top:18px;overflow:hidden}
+  .main-nav{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding-right:3px}
+  .main-area{flex:1 1 0;width:calc(100% - 266px);min-width:0;max-width:none}
+  .topbar{position:sticky;top:0;z-index:20;min-height:68px;height:auto;gap:14px;padding:12px 12px 13px;background:rgba(246,249,247,.9);border-bottom:1px solid rgba(220,232,224,.75);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
+  .top-actions{min-width:0;flex-wrap:wrap;justify-content:flex-end}
+  .global-search{min-width:220px}
+  .page-wrap{width:100%;max-width:none;margin:0;padding:20px 12px 42px}
+  #page-content{min-width:0;width:100%}
+  .crm-table-wrap,.table-panel{max-width:100%;overflow-x:auto;overscroll-behavior-x:contain}
+  .crm-table{width:100%;min-width:1000px}
+  .crm-board{grid-template-columns:repeat(4,minmax(235px,1fr));overflow-x:auto;overscroll-behavior-x:contain}
+  .crm-stage{min-width:0}
+  .crm-modal-backdrop,.modal-backdrop{overflow-y:auto}
+  button,input,select,textarea{max-width:100%}
+  :focus-visible{outline:2px solid #16845f!important;outline-offset:2px}
+}
+@media (min-width:761px) and (max-width:1100px){
+  .app-shell{padding:12px;gap:12px}
+  .sidebar{flex-basis:205px;width:205px;min-width:205px;top:12px;height:calc(100vh - 24px);min-height:calc(100vh - 24px);padding:16px 10px}
+  .brand{padding-left:5px;padding-right:5px}
+  .nav-item{padding:9px 8px;font-size:10px;gap:8px}
+  .workspace-switch{font-size:10px;padding:0 7px}
+  .main-area{width:calc(100% - 217px)}
+  .topbar{align-items:flex-start;flex-wrap:wrap}
+  .top-actions{width:100%;justify-content:flex-end}
+  .global-search{flex:1 1 220px}
+  .page-wrap{padding:16px 8px 32px}
+  .crm-company-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media (min-width:1101px){
+  .stats-grid,.crm-stats,.analytics-kpis{grid-template-columns:repeat(4,minmax(0,1fr))}
+  .crm-company-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+}
