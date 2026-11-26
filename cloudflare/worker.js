@@ -49,15 +49,31 @@ async function projectFor(env,u,pid){
 async function canEditProject(env,u,pid){
  const p=await projectFor(env,u,pid);return p&&["owner","editor"].includes(projectRole(p,u))?p:null;
 }
-async function who(req,env){
- const token=req.headers.get("Authorization")?.replace(/^Bearer\\s+/i,"").trim();
- if(!token||token.length>8192)return null;
+async function wixMemberForToken(token){
+ let key=null,cache=null;
+ try{
+  const digest=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(token));
+  const hash=Array.from(new Uint8Array(digest)).map(x=>x.toString(16).padStart(2,"0")).join("");
+  key=new Request("https://ekdant-auth-cache.invalid/"+hash);
+  cache=caches.default;
+  const hit=await cache.match(key);
+  if(hit)return await hit.json();
+ }catch{}
  const r=await fetch("https://www.wixapis.com/members/v1/members/my",{headers:{Authorization:token,Accept:"application/json"}});
  if(!r.ok)return null;
  const m=(await r.json()).member;
- if(!m?.id)return null;
- const row=await env.DB.prepare("SELECT wm.id AS mid,wm.workspace_id,wm.role,wm.status,wm.display_name,w.name AS workspace_name,w.slug AS workspace_slug FROM workspace_members wm JOIN workspaces w ON w.id=wm.workspace_id WHERE wm.wix_member_id=? AND wm.status='active' LIMIT 1").bind(m.id).first();
- if(row)return {m,...row};
+ if(m?.id&&cache&&key){
+  try{await cache.put(key,new Response(JSON.stringify(m),{headers:{"Content-Type":"application/json","Cache-Control":"max-age=30"}}))}catch{}
+ }
+ return m||null;
+}
+async function who(req,env){
+ const token=req.headers.get("Authorization")?.replace(/^Bearer\\s+/i,"").trim();
+ if(!token||token.length>8192)return null;
+  const m=await wixMemberForToken(token);
+  if(!m?.id)return null;
+  const row=await env.DB.prepare("SELECT wm.id AS mid,wm.workspace_id,wm.role,wm.status,wm.display_name,w.name AS workspace_name,w.slug AS workspace_slug FROM workspace_members wm JOIN workspaces w ON w.id=wm.workspace_id WHERE wm.wix_member_id=? LIMIT 1").bind(m.id).first();
+  if(row)return row.status==="active"?{m,...row}:{m,denied:true};
  const email=emailKey(m.loginEmail);
  if(!email)return {m,denied:true};
  const invite=await env.DB.prepare("SELECT id,workspace_id,role FROM workspace_invites WHERE email=? COLLATE NOCASE AND status='pending' LIMIT 1").bind(email).first();
