@@ -1,15 +1,17 @@
 import { subscribeMember, getMemberState } from "/js/wix/member-store.js";
 import { queryItems, insertItem, patchItemFields } from "/js/wix/items.js";
+import { accessToken } from "/js/wix/client.js";
 import { safeExternalUrl } from "/js/utils/safe-url.js";
 
 const COL = { projects: "EkdantProjects", contacts: "EkdantContacts", activity: "EkdantActivity" };
+const CRM_API_BASE = "https://ekdant-leaddesk-api-staging.okaymockup.workers.dev";
 const STAGES = ["New Lead", "Attempted", "Connected", "Interested", "Proposal Sent", "Negotiation", "Converted / Won", "Lost"];
 const OUTCOMES = ["Interested", "Not Interested", "No Answer", "Busy", "Switch Off", "Wrong Number", "Call Back Later", "Meeting Scheduled", "Converted", "Lost"];
 const $ = (s, root = document) => root.querySelector(s);
 const esc = v => String(v == null ? "" : v).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const dateFmt = v => v ? new Intl.DateTimeFormat("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(v)) : "—";
 const dayStart = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
-const state = { member: null, projects: [], contacts: [], activities: [], view: "overview", query: "", projectId: "", stage: "all", sourceFilter: "all", assigneeFilter: "all" };
+const state = { member: null, projects: [], contacts: [], activities: [], tasks: [], view: "overview", query: "", projectId: "", stage: "all", sourceFilter: "all", assigneeFilter: "all" };
 let mounted = false;
 
 async function allItems(collection) {
@@ -22,6 +24,19 @@ async function allItems(collection) {
   } while (page.hasNext);
   return out;
 }
+async function taskApi(path, method = "GET", body) {
+  const token = await accessToken();
+  const res = await fetch(CRM_API_BASE + path, {
+    method,
+    headers: { Authorization: token, "Content-Type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body)
+  });
+  let payload;
+  try { payload = await res.json(); } catch { payload = {}; }
+  if (!res.ok) throw new Error(payload.detail || payload.error || ("Task API failed (" + res.status + ")."));
+  return payload;
+}
+
 function role(p) {
   const me = String(state.member && state.member.loginEmail || "").toLowerCase();
   if (!p || !me) return "none";
@@ -44,11 +59,12 @@ function leads() {
   return rows;
 }
 async function reload() {
-  const [projects, contacts, activities] = await Promise.all([allItems(COL.projects), allItems(COL.contacts), allItems(COL.activity)]);
+  const [projects, contacts, activities, taskPage] = await Promise.all([allItems(COL.projects), allItems(COL.contacts), allItems(COL.activity), taskApi("/api/tasks?limit=200")]);
   state.projects = projects;
   const ids = new Set(allowedProjects().map(p => p._id));
   state.contacts = contacts.filter(c => ids.has(c.projectId)).map(c => ({ ...c, id: c._id, status: c.status || "New Lead" }));
   state.activities = activities.filter(a => ids.has(a.projectId));
+  state.tasks = (taskPage.items || []).map(t => ({ ...t, _id: t.id, projectId: t.project_id, contactId: t.contact_id, assignedTo: t.assigned_to, dueAt: t.due_at }));
   render();
 }
 function toast(message) {
@@ -274,6 +290,13 @@ async function saveAccess(form){
  await patchItemFields(COL.projects,p._id,{memberEmails:members});closeModal();await reload();toast("Project access saved.");
 }
 
+function taskView() {
+  const rows = state.tasks.filter(t => !state.projectId || t.projectId === state.projectId).sort((a,b) => String(a.dueAt || "9999").localeCompare(String(b.dueAt || "9999")));
+  const statusLabel = { open: "Open", in_progress: "In progress", done: "Done", cancelled: "Cancelled" };
+  return head("WORK MANAGEMENT", "Task Manager", "Assign follow-ups and internal work to a project, with clear ownership and status.", '<button class="btn btn-primary" data-crm-action="new-task">＋ New task</button>') +
+    '<div class="crm-filter-row">' + projectSelect() + '<span class="crm-muted">' + rows.length + ' tasks</span></div>' +
+    (rows.length ? '<section class="panel crm-task-list">' + rows.map(t => '<article class="crm-task-row"><div class="crm-task-main"><b>' + esc(t.title || "Untitled task") + '</b><small>' + esc(t.description || "") + '</small><small>' + esc(state.projects.find(p => p._id === t.projectId)?.name || "Project") + ' · ' + esc(t.assignedTo || "Unassigned") + ' · Due ' + dateFmt(t.dueAt) + '</small></div><select data-task-status="' + esc(t._id) + '" aria-label="Task status"><option value="open" ' + (t.status === "open" ? "selected" : "") + '>Open</option><option value="in_progress" ' + (t.status === "in_progress" ? "selected" : "") + '>In progress</option><option value="done" ' + (t.status === "done" ? "selected" : "") + '>Done</option><option value="cancelled" ' + (t.status === "cancelled" ? "selected" : "") + '>Cancelled</option></select></article>').join("") + '</section>' : '<section class="panel"><h3>No tasks yet</h3><p class="crm-muted">Create the first task for a project to track internal work and follow-ups.</p></section>');
+}
 function render() {
   const host = $("#crm-page");
   if (!host) return;
@@ -283,6 +306,7 @@ function render() {
     state.view === "calls" ? calls() :
     state.view === "companies" ? companies() :
     state.view === "activities" ? activitiesView() :
+    state.view === "tasks" ? taskView() :
     state.view === "automation" ? automationView() :
     state.view === "team" ? teamView() :
     state.view === "reports" ? reports() : leadList();
@@ -299,6 +323,40 @@ function openModal(title, content) {
   $("#crm-modal").classList.add("open");
 }
 function closeModal() { $("#crm-modal").classList.remove("open"); }
+function newTaskModal() {
+  const editable = allowedProjects().filter(p => ["owner", "editor"].includes(role(p)));
+  if (!editable.length) { toast("No editable project is available for this account."); return; }
+  openModal("Create task", '<form id="crm-task-form"><div class="crm-form-grid">' +
+    '<label>Project *<select name="projectId" required>' + editable.map(p => '<option value="' + esc(p._id) + '">' + esc(p.name) + '</option>').join("") + '</select></label>' +
+    '<label>Task title *<input name="title" required maxlength="180" placeholder="e.g. Call prospect"></label>' +
+    '<label>Assigned to<input name="assignedTo" placeholder="Team member email"></label>' +
+    '<label>Due date<input name="dueAt" type="datetime-local"></label>' +
+    '<label>Priority<select name="priority"><option value="normal">Normal</option><option value="high">High</option><option value="low">Low</option></select></label>' +
+    '<label class="crm-wide">Description<textarea name="description" maxlength="1500"></textarea></label>' +
+    '</div><div class="crm-modal-actions"><button type="button" class="btn btn-secondary" data-crm-action="close">Cancel</button><button class="btn btn-primary">Create task</button></div></form>');
+}
+async function saveTask(form) {
+  const fd = new FormData(form), projectId = String(fd.get("projectId") || ""), title = String(fd.get("title") || "").trim();
+  if (!title) throw new Error("A task title is required.");
+  if (!["owner", "editor"].includes(role(state.projects.find(p => p._id === projectId)))) throw new Error("You do not have edit access to this project.");
+  await taskApi("/api/tasks", "POST", {
+    project_id: projectId,
+    title,
+    description: String(fd.get("description") || "").trim(),
+    assigned_to: String(fd.get("assignedTo") || state.member.loginEmail || "").trim(),
+    due_at: fd.get("dueAt") ? new Date(fd.get("dueAt")).toISOString() : null,
+    priority: String(fd.get("priority") || "normal")
+  });
+  closeModal();
+  await reload();
+  toast("Task created successfully.");
+}
+async function updateTaskStatus(taskId, status) {
+  if (!["open", "in_progress", "done", "cancelled"].includes(status)) throw new Error("Invalid task status.");
+  await taskApi("/api/tasks/" + encodeURIComponent(taskId), "PATCH", { status });
+  await reload();
+  toast("Task status updated.");
+}
 function newProjectModal() {
   if (!allowedProjects().some(p => role(p) === "owner")) {
     toast("Only a workspace owner can create a project.");
@@ -430,6 +488,7 @@ function click(e) {
   if (b) {
     const a = b.dataset.crmAction;
     if (a === "new-project") newProjectModal();
+    if (a === "new-task") newTaskModal();
     if (a === "new-lead") newLeadModal();
     if (a === "new-activity") newActivityModal();
     if (a === "manage-access") manageAccess(b.dataset.id);
@@ -443,6 +502,7 @@ function click(e) {
 }
 async function submit(e) {
   if (e.target.id === "crm-project-form") { e.preventDefault(); const button = e.target.querySelector('button[type="submit"]'); if (button) { button.disabled = true; button.textContent = "Creating…"; } try { await saveProject(e.target); } catch (err) { if (button) { button.disabled = false; button.textContent = "Create project"; } toast("Project not created: " + err.message); } }
+  if (e.target.id === "crm-task-form") { e.preventDefault(); const button = e.target.querySelector('button[type="submit"]'); if (button) { button.disabled = true; button.textContent = "Creating…"; } try { await saveTask(e.target); } catch (err) { if (button) { button.disabled = false; button.textContent = "Create task"; } toast("Task not created: " + err.message); } }
   if (e.target.id === "crm-lead-form") {
     e.preventDefault(); const button = e.target.querySelector('button[type="submit"]');
     if (button) { button.disabled = true; button.textContent = "Saving…"; }
@@ -461,6 +521,7 @@ function change(e) {
   if (e.target.id === "crm-stage-filter") { state.stage = e.target.value || "all"; render(); }
   if (e.target.id === "crm-source-filter") { state.sourceFilter = e.target.value || "all"; render(); }
   if (e.target.id === "crm-assignee-filter") { state.assigneeFilter = e.target.value || "all"; render(); }
+  if (e.target.matches("[data-task-status]")) updateTaskStatus(e.target.dataset.taskStatus, e.target.value).catch(err => toast("Task status not updated: " + err.message));
   if (e.target.matches("[data-automation-rule]")) saveAutomationRule(e.target.dataset.automationRule,e.target.checked).catch(err=>{e.target.checked=!e.target.checked;toast(err.message)});
   if (e.target.matches("[data-crm-status]")) { const id = e.target.dataset.crmStatus, next = e.target.value; e.target.value = ""; if (next) moveStage(id, next).catch(err => toast(err.message)); }
 }
@@ -529,7 +590,7 @@ function mount() {
       ["pipeline", "Deal Pipeline", "▥"], ["companies", "Companies", "▦"],
       ["due", "Due Today", "◷"], ["upcoming", "Upcoming", "↗"],
       ["overdue", "Overdue", "!"], ["calls", "Call History", "☎"],
-      ["activities", "Activities", "◌"], ["automation", "Automation", "⚙"],
+      ["activities", "Activities", "◌"], ["tasks", "Task Manager", "✓"], ["automation", "Automation", "⚙"],
       ["team", "Team & Access", "♧"], ["reports", "CRM Reports", "▤"]
     ];
     navItems.forEach(([view, label, glyph]) => {
