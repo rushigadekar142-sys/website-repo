@@ -82,7 +82,7 @@ function overview() {
   const sourceCounts = {};
   rows.forEach(c => { const k = c.source || "Unspecified"; sourceCounts[k] = (sourceCounts[k] || 0) + 1; });
   const recent = state.activities.slice().sort((a, b) => new Date(b.happenedAt || 0) - new Date(a.happenedAt || 0)).slice(0, 6);
-  return head("CRM OVERVIEW", "Ekdant LeadDesk", "Your sales activity, lead pipeline and follow-ups in one workspace.", '<button class="btn btn-secondary" data-crm-nav="pipeline">Open pipeline</button><button class="btn btn-primary" data-crm-action="new-lead">＋ Add lead</button>') +
+  return head("CRM OVERVIEW", "Vistaar CRM", "Your sales activity, lead pipeline and follow-ups in one workspace.", '<button class="btn btn-secondary" data-crm-nav="pipeline">Open pipeline</button><button class="btn btn-primary" data-crm-action="new-lead">＋ Add lead</button>') +
     '<div class="crm-filter-row">' + projectSelect() + '<span class="crm-muted">' + rows.length + ' leads across ' + allowedProjects().length + ' projects</span></div>' +
     '<div class="crm-stats">' +
     stat("Total Leads", rows.length, "All active records", "leads") +
@@ -369,7 +369,7 @@ function exportCsv() {
   const keys = ["leadId", "businessName", "contactPerson", "phone", "whatsapp", "email", "company", "city", "source", "campaign", "assignedTo", "status", "priority", "followUpAt", "dealValue"];
   const csv = [keys.join(","), ...leads().map(c => keys.map(k => '"' + String(c[k] == null ? "" : c[k]).replace(/"/g, '""') + '"').join(","))].join("\r\n");
   const url = URL.createObjectURL(new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8" }));
-  const a = document.createElement("a"); a.href = url; a.download = "ekdant-leads.csv"; a.click(); URL.revokeObjectURL(url);
+  const a = document.createElement("a"); a.href = url; a.download = "vistaar-leads.csv"; a.click(); URL.revokeObjectURL(url);
 }
 function click(e) {
   const b = e.target.closest("[data-crm-action]");
@@ -421,14 +421,14 @@ function mount() {
   const nav = $(".main-nav");
   if (nav) {
     nav.querySelectorAll(":scope > .nav-item, :scope > .nav-label").forEach(el => { el.style.display = "none"; });
-    const group = document.createElement("span"); group.className = "nav-label"; group.textContent = "EKDANT CRM";
+    const group = document.createElement("span"); group.className = "nav-label"; group.textContent = "VISTAAR CRM";
     nav.append(group);
     [["overview", "CRM Overview"], ["leads", "All Leads"], ["pipeline", "Deal Pipeline"], ["companies", "Companies"], ["due", "Due Today"], ["upcoming", "Upcoming"], ["overdue", "Overdue"], ["calls", "Call History"], ["activities", "Activities"], ["automation", "Automation"], ["team", "Team & Access"], ["reports", "CRM Reports"]].forEach(x => {
       const button = document.createElement("button"); button.className = "nav-item crm-nav-item"; button.dataset.crmView = x[0]; button.textContent = x[1]; button.addEventListener("click", () => setView(x[0])); nav.append(button);
     });
   }
   const modal = document.createElement("div"); modal.id = "crm-modal"; modal.className = "crm-modal-backdrop";
-  modal.innerHTML = '<section class="crm-modal"><header><div><span class="eyebrow">EKDANT LEADDESK</span><h2 id="crm-modal-title">CRM</h2></div><button class="icon-btn" data-crm-action="close">×</button></header><div id="crm-modal-content"></div></section>';
+  modal.innerHTML = '<section class="crm-modal"><header><div><span class="eyebrow">VISTAAR CRM</span><h2 id="crm-modal-title">CRM</h2></div><button class="icon-btn" data-crm-action="close">×</button></header><div id="crm-modal-content"></div></section>';
   document.body.append(modal);
   modal.addEventListener("click", e => { if (e.target === modal) closeModal(); });
   
