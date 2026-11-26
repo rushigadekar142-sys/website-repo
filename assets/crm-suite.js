@@ -1,4 +1,4 @@
-import { subscribeMember, getMemberState } from "/js/wix/member-store.js";
+import { subscribeMember, getMemberState, listWorkspaceMembers, inviteWorkspaceMember, removeWorkspaceMember, changeWorkspaceMemberRole } from "/js/wix/member-store.js";
 import { queryItems, insertItem, patchItemFields } from "/js/wix/items.js";
 
 const COL = { projects: "EkdantProjects", contacts: "EkdantContacts", activity: "EkdantActivity" };
@@ -8,7 +8,7 @@ const $ = (s, root = document) => root.querySelector(s);
 const esc = v => String(v == null ? "" : v).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const dateFmt = v => v ? new Intl.DateTimeFormat("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(v)) : "—";
 const dayStart = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
-const state = { member: null, projects: [], contacts: [], activities: [], view: "overview", query: "", projectId: "", stage: "all", sourceFilter: "all", assigneeFilter: "all" };
+const state = { member: null, projects: [], contacts: [], activities: [], view: "overview", query: "", projectId: "", stage: "all", sourceFilter: "all", assigneeFilter: "all", teamMembers: [], inviteUrl: "" };
 let mounted = false;
 
 async function allItems(collection) {
@@ -43,8 +43,9 @@ function leads() {
   return rows;
 }
 async function reload() {
-  const [projects, contacts, activities] = await Promise.all([allItems(COL.projects), allItems(COL.contacts), allItems(COL.activity)]);
+  const [projects, contacts, activities, teamMembers] = await Promise.all([allItems(COL.projects), allItems(COL.contacts), allItems(COL.activity), listWorkspaceMembers()]);
   state.projects = projects;
+  state.teamMembers = teamMembers;
   const ids = new Set(allowedProjects().map(p => p._id));
   state.contacts = contacts.filter(c => ids.has(c.projectId)).map(c => ({ ...c, id: c._id, status: c.status || "New Lead" }));
   state.activities = activities.filter(a => ids.has(a.projectId));
@@ -212,7 +213,17 @@ function activitiesView(){
  rows.map(a=>{const c=state.contacts.find(x=>x.id===a.contactId);return '<article class="crm-activity-item"><div><b>'+esc(a.activityType||"Activity")+' · '+esc(c?(c.businessName||c.contactPerson):"Workspace")+'</b><p>'+esc(a.remark||a.nextAction||a.callOutcome||a.newStatus||"Activity recorded")+'</p><small>'+dateFmt(a.happenedAt)+' · '+esc(a.actorName||a.actorEmail||"Team member")+'</small></div></article>'}).join("")+'</section>';
 }
 function teamView(){
- return head("TEAM & PERMISSIONS","Team access","Review project members and manage Viewer or Editor access.",'')+'<section class="panel">'+allowedProjects().map(p=>'<article class="crm-team-project"><div><b>'+esc(p.name)+'</b><small>'+esc(role(p))+'</small></div><div>'+(p.memberEmails||[]).map(x=>{const a=String(x).split("::");return '<span class="crm-member-chip">'+esc(a[0])+' · '+esc(a[1]||"viewer")+'</span>'}).join("")+'</div>'+(role(p)==="owner"?'<button class="btn btn-secondary" data-crm-action="manage-access" data-id="'+p._id+'">Manage access</button>':'')+'</article>').join("")+'<div class="crm-security-note"><b>Security limitation</b><p>Role checks currently run in the browser and are not server-side authorization. Restrict Wix CMS collection permissions before relying on roles for sensitive data.</p></div></section>';
+ const m=state.member||{},owner=m.workspaceRole==="owner",manager=m.workspaceRole==="manager";
+ const rows=(state.teamMembers||[]).map(x=>{
+   const self=x.user_id===m.id,canRemove=!self&&((owner&&x.role!=="owner")||(manager&&x.role==="staff"));
+   const roleControl=owner&&!self&&x.role!=="owner"?'<select class="select-control crm-member-role" data-user-id="'+x.user_id+'"><option value="manager" '+(x.role==="manager"?'selected':'')+'>Manager</option><option value="staff" '+(x.role==="staff"?'selected':'')+'>Staff</option></select>':'<span class="crm-member-chip">'+esc(x.role)+'</span>';
+   return '<article class="crm-team-project"><div><b>'+esc(x.full_name||x.email)+(self?' (You)':'')+'</b><small>'+esc(x.email)+' · '+esc(x.status)+'</small></div>'+roleControl+(canRemove?'<button class="btn btn-secondary" data-crm-action="remove-member" data-id="'+x.user_id+'">Remove</button>':'')+'</article>';
+ }).join("");
+ const form=(owner||manager)?'<form id="workspace-invite-form" class="panel"><div class="crm-form-grid"><label>Team member email<input name="email" type="email" required placeholder="person@company.com"></label><label>Role<select name="role">'+(owner?'<option value="manager">Manager</option>':'')+'<option value="staff">Staff</option></select></label></div><div class="crm-modal-actions"><button class="btn btn-primary">＋ Create invitation link</button></div><p class="crm-muted">Share the generated link with the invitee. They must register or sign in using the invited email address.</p><div id="crm-invite-result" hidden><input id="crm-invite-link" readonly><button type="button" class="btn btn-secondary" data-crm-action="copy-invite">Copy link</button></div></form>':'<p class="crm-muted">Only the owner or a manager can invite team members.</p>';
+ return head("TEAM & PERMISSIONS","Team access","Manage workspace members and access roles. Database policies isolate every company’s records.",'')+
+ '<section class="panel"><div class="panel-head"><div><div class="panel-title">'+esc(m.workspaceName||"Workspace")+'</div><div class="panel-sub">'+(state.teamMembers||[]).length+' members</div></div><span class="analytics-tag">'+esc(m.workspaceRole||"member")+'</span></div>'+form+
+ '<div class="panel-title" style="margin-top:18px">Members</div>'+(rows||'<p class="crm-muted">No members yet.</p>')+
+ '<div class="crm-security-note"><b>Role boundaries</b><p>Owner: full control. Manager: manage CRM and invite Staff. Staff: work with assigned or unassigned contacts. These permissions are enforced by Postgres row-level security.</p></div></section>';
 }
 function automationView(){
  const rules=[["autoFollow","Default follow-up for new leads","New lead → next-day follow-up"],["stageLog","Pipeline stage history","Stage changed → activity timeline entry"],["wonLog","Won-deal reporting","Converted / Won → preserve deal value"]];
@@ -382,11 +393,25 @@ function click(e) {
     if (a === "detail") detailModal(b.dataset.id);
     if (a === "close") closeModal();
     if (a === "export") exportCsv();
+    if (a === "remove-member") removeWorkspaceMember(b.dataset.id).then(()=>reload()).then(()=>toast("Member removed")).catch(err=>toast(err.message));
+    if (a === "copy-invite") { const field=$("#crm-invite-link"); if(field){field.select();navigator.clipboard?.writeText(field.value).then(()=>toast("Invitation link copied")).catch(()=>toast("Select and copy the link"));} }
   }
   const nav = e.target.closest("[data-crm-nav]");
   if (nav) setView(nav.dataset.crmNav);
 }
 async function submit(e) {
+  if (e.target.id === "workspace-invite-form") {
+    e.preventDefault();
+    const fd=new FormData(e.target),button=e.target.querySelector("button[type=submit],button:not([type])");
+    if(button){button.disabled=true;button.textContent="Creating…"}
+    try{
+      state.inviteUrl=await inviteWorkspaceMember(String(fd.get("email")||""),String(fd.get("role")||"staff"));
+      const wrap=$("#crm-invite-result"),field=$("#crm-invite-link");if(wrap)wrap.hidden=false;if(field)field.value=state.inviteUrl;
+      try{await navigator.clipboard.writeText(state.inviteUrl);toast("Invitation created and copied")}catch(_){toast("Invitation created. Copy the link below.")}
+    }catch(err){toast(err.message||"Invitation failed")}
+    finally{if(button){button.disabled=false;button.textContent="＋ Create invitation link"}}
+    return;
+  }
   if (e.target.id === "crm-lead-form") {
     e.preventDefault(); const button = e.target.querySelector('button[type="submit"]');
     if (button) { button.disabled = true; button.textContent = "Saving…"; }
@@ -401,6 +426,10 @@ async function submit(e) {
   }
 }
 function change(e) {
+  if (e.target.matches(".crm-member-role")) {
+    changeWorkspaceMemberRole(e.target.dataset.userId,e.target.value).then(()=>reload()).then(()=>toast("Role updated")).catch(err=>{toast(err.message);reload()});
+    return;
+  }
   if (e.target.id === "crm-project-filter") { state.projectId = e.target.value; render(); }
   if (e.target.id === "crm-stage-filter") { state.stage = e.target.value || "all"; render(); }
   if (e.target.id === "crm-source-filter") { state.sourceFilter = e.target.value || "all"; render(); }
