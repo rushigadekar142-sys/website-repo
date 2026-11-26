@@ -11,7 +11,7 @@ const $ = (s, root = document) => root.querySelector(s);
 const esc = v => String(v == null ? "" : v).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const dateFmt = v => { if (!v) return "—"; const d = new Date(v); return Number.isNaN(d.getTime()) ? "—" : new Intl.DateTimeFormat("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(d); };
 const dayStart = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
-const state = { member: null, projects: [], contacts: [], activities: [], tasks: [], view: "overview", trash: [], query: "", projectId: "", stage: "all", sourceFilter: "all", assigneeFilter: "all", sortBy: "created", sortDirection: "desc" };
+const state = { member: null, projects: [], contacts: [], activities: [], tasks: [], view: "overview", trash: [], query: "", projectId: "", stage: "all", sourceFilter: "all", assigneeFilter: "all", sortKey: "created", sortDir: "desc" };
 let mounted = false;
 
 async function allItems(collection) {
