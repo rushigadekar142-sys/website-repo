@@ -1,5 +1,6 @@
 import { subscribeMember, getMemberState } from "/js/wix/member-store.js";
 import { queryItems, insertItem, patchItemFields } from "/js/wix/items.js";
+import { safeExternalUrl } from "/js/utils/safe-url.js";
 
 const COL = { projects: "EkdantProjects", contacts: "EkdantContacts", activity: "EkdantActivity" };
 const STAGES = ["New Lead", "Attempted", "Connected", "Interested", "Proposal Sent", "Negotiation", "Converted / Won", "Lost"];
@@ -59,10 +60,36 @@ function toast(message) {
   stack.append(item);
   setTimeout(() => item.remove(), 3500);
 }
+function syncMobileNavAccessibility(open = false) {
+  const sidebar = $(".sidebar");
+  const scrim = $("#crm-mobile-nav-scrim");
+  const isMobile = window.matchMedia("(max-width: 760px)").matches;
+  if (sidebar) sidebar.inert = isMobile && !open;
+  if (scrim) scrim.setAttribute("aria-hidden", String(!isMobile || !open));
+}
+function closeMobileNav() {
+  const sidebar = $(".sidebar");
+  const scrim = $("#crm-mobile-nav-scrim");
+  const toggle = $("#crm-mobile-menu-toggle");
+  const wasOpen = !!(sidebar && sidebar.classList.contains("mobile-open"));
+  if (sidebar) sidebar.classList.remove("mobile-open");
+  if (scrim) scrim.classList.remove("open");
+  if (toggle) {
+    toggle.setAttribute("aria-expanded", "false");
+    toggle.setAttribute("aria-label", "Open navigation");
+    if (wasOpen) toggle.focus();
+  }
+  syncMobileNavAccessibility(false);
+}
 function setView(view) {
   state.view = view;
-  document.querySelectorAll("[data-crm-view]").forEach(b => b.classList.toggle("crm-active", b.dataset.crmView === view));
+  document.querySelectorAll("[data-crm-view]").forEach(b => {
+    const active = b.dataset.crmView === view;
+    b.classList.toggle("crm-active", active);
+    if (active) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current");
+  });
   render();
+  closeMobileNav();
 }
 function head(kicker, title, description, actions) {
   return '<div class="crm-head"><div><span class="eyebrow">' + kicker + '</span><h1>' + title + '</h1><p>' + description + '</p></div><div class="crm-head-actions">' + (actions || "") + '</div></div>';
@@ -300,10 +327,11 @@ function detailModal(id) {
   const c = state.contacts.find(x => x.id === id);
   if (!c) return;
   const wa = String(c.whatsapp || c.phone || "").replace(/\D/g, "");
+  const website = safeExternalUrl(c.website);
   const activity = state.activities.filter(a => a.contactId === id).sort((a, b) => new Date(b.happenedAt || 0) - new Date(a.happenedAt || 0)).slice(0, 12);
   openModal(c.businessName || c.contactPerson || "Lead profile", '<div class="crm-detail-grid">' +
     [["Lead ID", c.leadId || c.srNo || id], ["Status", c.status], ["Phone", c.phone], ["WhatsApp", c.whatsapp || c.phone], ["Email", c.email], ["Company", c.company], ["City", c.city || c.area], ["Source", c.source], ["Campaign", c.campaign], ["Assigned to", c.assignedTo], ["Priority", c.priority], ["Follow-up", dateFmt(c.followUpAt)], ["Deal value", c.dealValue ? "₹" + c.dealValue : "—"], ["Payment status", c.paymentStatus], ["Industry", c.industry], ["Website", c.website], ["Tags", c.tags], ["Custom field 1", c.customField1], ["Custom field 2", c.customField2]].map(x => '<div><small>' + x[0] + '</small><b>' + esc(x[1] || "—") + '</b></div>').join("") + '</div>' +
-    '<div class="crm-modal-actions"><a class="btn btn-secondary" href="tel:' + esc(c.phone || "") + '">Call</a>' + (c.email ? '<a class="btn btn-secondary" href="mailto:' + esc(c.email) + '">Email</a>' : "") + (c.website ? '<a class="btn btn-secondary" target="_blank" rel="noopener" href="' + esc(c.website) + '">Website</a>' : "") + (wa ? '<a class="btn btn-secondary" target="_blank" rel="noopener" href="https://wa.me/' + wa + '">WhatsApp</a>' : "") + '<button class="btn btn-primary" data-crm-action="call" data-id="' + id + '">＋ Log call</button></div>' +
+    '<div class="crm-modal-actions"><a class="btn btn-secondary" href="tel:' + esc(c.phone || "") + '">Call</a>' + (c.email ? '<a class="btn btn-secondary" href="mailto:' + esc(c.email) + '">Email</a>' : "") + (website ? '<a class="btn btn-secondary" target="_blank" rel="noopener noreferrer" href="' + esc(website) + '">Website</a>' : "") + (wa ? '<a class="btn btn-secondary" target="_blank" rel="noopener" href="https://wa.me/' + wa + '">WhatsApp</a>' : "") + '<button class="btn btn-primary" data-crm-action="call" data-id="' + id + '">＋ Log call</button></div>' +
     '<section class="crm-history"><b>Activity timeline</b>' + (activity.map(a => '<div><b>' + esc(a.callOutcome || a.newStatus || a.activityType) + '</b><small>' + dateFmt(a.happenedAt) + ' · ' + esc(a.remark || "") + '</small></div>').join("") || '<p>No activity yet.</p>') + '</section>');
 }
 function statusForOutcome(outcome) {
@@ -418,13 +446,82 @@ function mount() {
   const crmPage = document.createElement("div"); crmPage.id = "crm-page";
   const pageWrap = document.querySelector(".page-wrap");
   if (pageWrap) pageWrap.append(crmPage);
+
+  const crumb = $(".crumb");
+  if (crumb && !$("#crm-mobile-menu-toggle")) {
+    const toggle = document.createElement("button");
+    toggle.id = "crm-mobile-menu-toggle";
+    toggle.className = "crm-mobile-menu-toggle";
+    toggle.type = "button";
+    toggle.textContent = "☰";
+    toggle.title = "Open navigation";
+    toggle.setAttribute("aria-label", "Open navigation");
+    toggle.setAttribute("aria-expanded", "false");
+    toggle.setAttribute("aria-controls", "crm-sidebar");
+    toggle.addEventListener("click", () => {
+      const sidebar = $(".sidebar");
+      const scrim = $("#crm-mobile-nav-scrim");
+      const open = !!sidebar && !sidebar.classList.contains("mobile-open");
+      if (sidebar) sidebar.classList.toggle("mobile-open", open);
+      if (scrim) scrim.classList.toggle("open", open);
+      toggle.setAttribute("aria-expanded", String(open));
+      toggle.setAttribute("aria-label", open ? "Close navigation" : "Open navigation");
+      syncMobileNavAccessibility(open);
+      if (open && sidebar) {
+        const firstLink = sidebar.querySelector("[data-crm-view]");
+        if (firstLink) firstLink.focus();
+      }
+    });
+    crumb.prepend(toggle);
+
+    const scrim = document.createElement("button");
+    scrim.id = "crm-mobile-nav-scrim";
+    scrim.className = "crm-mobile-nav-scrim";
+    scrim.type = "button";
+    scrim.setAttribute("aria-label", "Close navigation");
+    scrim.setAttribute("aria-hidden", "true");
+    scrim.addEventListener("click", closeMobileNav);
+    document.body.append(scrim);
+  }
+
+  const sidebar = $(".sidebar");
+  if (sidebar) {
+    sidebar.id = "crm-sidebar";
+    sidebar.setAttribute("role", "navigation");
+    sidebar.setAttribute("aria-label", "CRM navigation");
+  }
   const nav = $(".main-nav");
   if (nav) {
+    nav.setAttribute("aria-label", "CRM sections");
     nav.querySelectorAll(":scope > .nav-item, :scope > .nav-label").forEach(el => { el.style.display = "none"; });
     const group = document.createElement("span"); group.className = "nav-label"; group.textContent = "EKDANT CRM";
     nav.append(group);
-    [["overview", "CRM Overview"], ["leads", "All Leads"], ["pipeline", "Deal Pipeline"], ["companies", "Companies"], ["due", "Due Today"], ["upcoming", "Upcoming"], ["overdue", "Overdue"], ["calls", "Call History"], ["activities", "Activities"], ["automation", "Automation"], ["team", "Team & Access"], ["reports", "CRM Reports"]].forEach(x => {
-      const button = document.createElement("button"); button.className = "nav-item crm-nav-item"; button.dataset.crmView = x[0]; button.textContent = x[1]; button.addEventListener("click", () => setView(x[0])); nav.append(button);
+    const navItems = [
+      ["overview", "CRM Overview", "◫"], ["leads", "All Leads", "☷"],
+      ["pipeline", "Deal Pipeline", "▥"], ["companies", "Companies", "▦"],
+      ["due", "Due Today", "◷"], ["upcoming", "Upcoming", "↗"],
+      ["overdue", "Overdue", "!"], ["calls", "Call History", "☎"],
+      ["activities", "Activities", "◌"], ["automation", "Automation", "⚙"],
+      ["team", "Team & Access", "♧"], ["reports", "CRM Reports", "▤"]
+    ];
+    navItems.forEach(([view, label, glyph]) => {
+      const button = document.createElement("button");
+      button.className = "nav-item crm-nav-item";
+      button.dataset.crmView = view;
+      button.title = label;
+      button.setAttribute("aria-label", label);
+      button.setAttribute("type", "button");
+      const icon = document.createElement("span");
+      icon.className = "nav-ico";
+      icon.setAttribute("aria-hidden", "true");
+      icon.textContent = glyph;
+      const text = document.createElement("span");
+      text.className = "crm-nav-text";
+      text.textContent = label;
+      button.append(icon, text);
+      button.addEventListener("click", () => setView(view));
+      if (view === state.view) button.setAttribute("aria-current", "page");
+      nav.append(button);
     });
   }
   const modal = document.createElement("div"); modal.id = "crm-modal"; modal.className = "crm-modal-backdrop";
@@ -444,7 +541,12 @@ function mount() {
   $("#crm-modal-content").addEventListener("submit", submit);
   $("#crm-modal-content").addEventListener("change", change);
   $("#export-btn").addEventListener("click", exportCsv);
-  document.addEventListener("keydown", e => { if (e.key === "Escape") closeModal(); });
+  syncMobileNavAccessibility(false);
+  window.addEventListener("resize", () => {
+    const sidebar = $(".sidebar");
+    syncMobileNavAccessibility(!!(sidebar && sidebar.classList.contains("mobile-open")));
+  });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") { closeModal(); closeMobileNav(); } });
 }
 function onMember(s) {
   if (!s || s.loading || !s.loggedIn || !s.member) return;
