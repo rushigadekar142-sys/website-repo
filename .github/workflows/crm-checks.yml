@@ -1,0 +1,27 @@
+name: CRM checks
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main, "fix/**", "infra/**"]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Unit tests and syntax
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Run unit tests
+        run: node --test tests/*.test.mjs
+      - name: Check JavaScript syntax across frontend and Worker
+        run: |
+          find assets js cloudflare -type f -name '*.js' -print0 | xargs -0 -n1 node --check

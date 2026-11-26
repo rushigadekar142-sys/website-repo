@@ -1,0 +1,8 @@
+name = "ekdant-leaddesk-api"
+main = "worker.js"
+compatibility_date = "2026-11-26"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "ekdant-leaddesk"
+database_id = "8f84054e-a0ac-4203-b8f8-1172637cb46f"

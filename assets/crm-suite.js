@@ -1,26 +1,44 @@
 import { subscribeMember, getMemberState } from "/js/wix/member-store.js";
 import { queryItems, insertItem, patchItemFields } from "/js/wix/items.js";
+import { accessToken } from "/js/wix/client.js";
+import { safeExternalUrl } from "/js/utils/safe-url.js";
 
 const COL = { projects: "EkdantProjects", contacts: "EkdantContacts", activity: "EkdantActivity" };
+const CRM_API_BASE = "https://ekdant-leaddesk-api-staging.okaymockup.workers.dev";
 const STAGES = ["New Lead", "Attempted", "Connected", "Interested", "Proposal Sent", "Negotiation", "Converted / Won", "Lost"];
 const OUTCOMES = ["Interested", "Not Interested", "No Answer", "Busy", "Switch Off", "Wrong Number", "Call Back Later", "Meeting Scheduled", "Converted", "Lost"];
 const $ = (s, root = document) => root.querySelector(s);
 const esc = v => String(v == null ? "" : v).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-const dateFmt = v => v ? new Intl.DateTimeFormat("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(v)) : "—";
+const dateFmt = v => { if (!v) return "—"; const d = new Date(v); return Number.isNaN(d.getTime()) ? "—" : new Intl.DateTimeFormat("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(d); };
 const dayStart = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
-const state = { member: null, projects: [], contacts: [], activities: [], view: "overview", query: "", projectId: "", stage: "all", sourceFilter: "all", assigneeFilter: "all" };
+const state = { member: null, projects: [], contacts: [], activities: [], tasks: [], view: "overview", trash: [], query: "", projectId: "", stage: "all", sourceFilter: "all", assigneeFilter: "all", sortKey: "created", sortDir: "desc" };
 let mounted = false;
 
 async function allItems(collection) {
   const out = [];
   let skip = 0, page;
   do {
-    page = await queryItems(collection, { limit: 100, skip });
-    out.push(...(page.items || []));
-    skip += 100;
-  } while (page.hasNext);
+    page = await queryItems(collection, { limit: 200, skip });
+    const batch = page.items || [];
+    out.push(...batch);
+    if (!page.hasNext || batch.length === 0) break;
+    skip += batch.length;
+  } while (true);
   return out;
 }
+async function taskApi(path, method = "GET", body) {
+  const token = await accessToken();
+  const res = await fetch(CRM_API_BASE + path, {
+    method,
+    headers: { Authorization: token, "Content-Type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body)
+  });
+  let payload;
+  try { payload = await res.json(); } catch { payload = {}; }
+  if (!res.ok) throw new Error(payload.detail || payload.error || ("Task API failed (" + res.status + ")."));
+  return payload;
+}
+
 function role(p) {
   const me = String(state.member && state.member.loginEmail || "").toLowerCase();
   if (!p || !me) return "none";
@@ -29,7 +47,7 @@ function role(p) {
   return share ? String(share).split("::")[1] || "viewer" : "none";
 }
 function allowedProjects() { return state.projects.filter(p => role(p) !== "none"); }
-function leads() {
+function leads(ignoreStage = false) {
   const ids = new Set(allowedProjects().map(p => p._id));
   let rows = state.contacts.filter(c => ids.has(c.projectId));
   if (state.projectId) rows = rows.filter(c => c.projectId === state.projectId);
@@ -37,17 +55,28 @@ function leads() {
     const q = state.query.toLowerCase();
     rows = rows.filter(c => [c.leadId, c.businessName, c.company, c.contactPerson, c.phone, c.whatsapp, c.email, c.city, c.source, c.campaign, c.assignedTo].some(v => String(v || "").toLowerCase().includes(q)));
   }
-  if (state.stage !== "all") rows = rows.filter(c => (c.status || "New Lead") === state.stage);
+  if (!ignoreStage && state.stage !== "all") rows = rows.filter(c => (c.status || "New Lead") === state.stage);
   if (state.sourceFilter !== "all") rows = rows.filter(c => (c.source || "Unspecified") === state.sourceFilter);
   if (state.assigneeFilter !== "all") rows = rows.filter(c => (c.assignedTo || "Unassigned") === state.assigneeFilter);
+  const key = state.sortKey || "created", dir = state.sortDir === "asc" ? 1 : -1;
+  const value = c => key === "name" ? String(c.businessName || c.contactPerson || "").toLocaleLowerCase()
+    : key === "created" ? (new Date(c._createdDate || c.createdAt || c.importedAt || 0).getTime() || 0)
+    : key === "followup" ? (new Date(c.followUpAt || 0).getTime() || 0)
+    : key === "stage" ? String(c.status || "New Lead").toLocaleLowerCase()
+    : key === "assignee" ? String(c.assignedTo || "Unassigned").toLocaleLowerCase()
+    : key === "leadId" ? String(c.leadId || c.srNo || "").toLocaleLowerCase()
+    : String(c[key] || "").toLocaleLowerCase();
+  rows.sort((a,b) => { const av=value(a), bv=value(b); const cmp = typeof av === "number" && typeof bv === "number" ? av-bv : String(av).localeCompare(String(bv), "en", {numeric:true,sensitivity:"base"}); return cmp * dir; });
   return rows;
 }
 async function reload() {
-  const [projects, contacts, activities] = await Promise.all([allItems(COL.projects), allItems(COL.contacts), allItems(COL.activity)]);
+  const [projects, contacts, activities, taskPage, trashPage] = await Promise.all([allItems(COL.projects), allItems(COL.contacts), allItems(COL.activity), taskApi("/api/tasks?limit=200"), taskApi("/api/trash?limit=200")]);
   state.projects = projects;
   const ids = new Set(allowedProjects().map(p => p._id));
   state.contacts = contacts.filter(c => ids.has(c.projectId)).map(c => ({ ...c, id: c._id, status: c.status || "New Lead" }));
   state.activities = activities.filter(a => ids.has(a.projectId));
+  state.tasks = (taskPage.items || []).map(t => ({ ...t, _id: t.id, projectId: t.project_id, contactId: t.contact_id, assignedTo: t.assigned_to, dueAt: t.due_at }));
+   state.trash = trashPage.items || [];
   render();
 }
 function toast(message) {
@@ -59,10 +88,36 @@ function toast(message) {
   stack.append(item);
   setTimeout(() => item.remove(), 3500);
 }
+function syncMobileNavAccessibility(open = false) {
+  const sidebar = $(".sidebar");
+  const scrim = $("#crm-mobile-nav-scrim");
+  const isMobile = window.matchMedia("(max-width: 760px)").matches;
+  if (sidebar) sidebar.inert = isMobile && !open;
+  if (scrim) scrim.setAttribute("aria-hidden", String(!isMobile || !open));
+}
+function closeMobileNav() {
+  const sidebar = $(".sidebar");
+  const scrim = $("#crm-mobile-nav-scrim");
+  const toggle = $("#crm-mobile-menu-toggle");
+  const wasOpen = !!(sidebar && sidebar.classList.contains("mobile-open"));
+  if (sidebar) sidebar.classList.remove("mobile-open");
+  if (scrim) scrim.classList.remove("open");
+  if (toggle) {
+    toggle.setAttribute("aria-expanded", "false");
+    toggle.setAttribute("aria-label", "Open navigation");
+    if (wasOpen) toggle.focus();
+  }
+  syncMobileNavAccessibility(false);
+}
 function setView(view) {
   state.view = view;
-  document.querySelectorAll("[data-crm-view]").forEach(b => b.classList.toggle("crm-active", b.dataset.crmView === view));
+  document.querySelectorAll("[data-crm-view]").forEach(b => {
+    const active = b.dataset.crmView === view;
+    b.classList.toggle("crm-active", active);
+    if (active) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current");
+  });
   render();
+  closeMobileNav();
 }
 function head(kicker, title, description, actions) {
   return '<div class="crm-head"><div><span class="eyebrow">' + kicker + '</span><h1>' + title + '</h1><p>' + description + '</p></div><div class="crm-head-actions">' + (actions || "") + '</div></div>';
@@ -82,7 +137,7 @@ function overview() {
   const sourceCounts = {};
   rows.forEach(c => { const k = c.source || "Unspecified"; sourceCounts[k] = (sourceCounts[k] || 0) + 1; });
   const recent = state.activities.slice().sort((a, b) => new Date(b.happenedAt || 0) - new Date(a.happenedAt || 0)).slice(0, 6);
-  return head("CRM OVERVIEW", "Ekdant LeadDesk", "Your sales activity, lead pipeline and follow-ups in one workspace.", '<button class="btn btn-secondary" data-crm-nav="pipeline">Open pipeline</button><button class="btn btn-primary" data-crm-action="new-lead">＋ Add lead</button>') +
+  return head("CRM OVERVIEW", "Vistaar", "Your sales activity, lead pipeline and follow-ups in one workspace.", '<button class="btn btn-secondary" data-crm-action="new-project">＋ New project</button><button class="btn btn-secondary" data-crm-nav="pipeline">Open pipeline</button><button class="btn btn-primary" data-crm-action="new-lead">＋ Add lead</button>') +
     '<div class="crm-filter-row">' + projectSelect() + '<span class="crm-muted">' + rows.length + ' leads across ' + allowedProjects().length + ' projects</span></div>' +
     '<div class="crm-stats">' +
     stat("Total Leads", rows.length, "All active records", "leads") +
@@ -103,14 +158,20 @@ function overview() {
     (recent.map(a => '<div class="crm-follow-row"><div><b>' + esc(a.callOutcome || a.newStatus || a.activityType || "Activity") + '</b><small>' + esc(a.actorName || a.actorEmail || "Team member") + ' · ' + dateFmt(a.happenedAt) + '</small></div><span class="crm-muted">' + esc(a.remark || "") + '</span></div>').join("") || '<p class="crm-muted">No activity recorded yet.</p>') + '</section>';
 }
 function leadTable(rows) {
-  return '<div class="crm-table-wrap"><table class="crm-table"><thead><tr><th>Lead ID</th><th>Business / Contact</th><th>Phone</th><th>Source</th><th>Assigned To</th><th>Stage</th><th>Next Follow-up</th><th>Action</th></tr></thead><tbody>' +
-    rows.map(c => '<tr><td>' + esc(c.leadId || c.srNo || "—") + '</td><td><button class="crm-link" data-crm-action="detail" data-id="' + c.id + '">' + esc(c.businessName || c.contactPerson || "Unnamed") + '</button><small>' + esc(c.company || c.city || c.category || "") + '</small></td><td><a href="tel:' + esc(c.phone || "") + '">' + esc(c.phone || "—") + '</a></td><td>' + esc(c.source || "—") + '</td><td>' + esc(c.assignedTo || "Unassigned") + '</td><td><span class="status-pill">' + esc(c.status || "New Lead") + '</span></td><td>' + dateFmt(c.followUpAt) + '</td><td><button class="btn btn-secondary" data-crm-action="call" data-id="' + c.id + '">Log call</button></td></tr>').join("") +
+  const latestCalls = new Map();
+  state.activities.filter(a => a.activityType === "Call").forEach(a => {
+    const prev = latestCalls.get(a.contactId);
+    if (!prev || new Date(a.happenedAt || 0) > new Date(prev.happenedAt || 0)) latestCalls.set(a.contactId, a);
+  });
+  const sortable = (key,label) => '<button type="button" class="crm-sort-button" data-crm-sort="' + key + '">' + label + (state.sortKey === key ? (state.sortDir === "asc" ? ' ↑' : ' ↓') : ' ↕') + '</button>';
+  return '<div class="crm-table-wrap"><table class="crm-table"><thead><tr><th>' + sortable("leadId","Lead ID") + '</th><th>' + sortable("name","Business / Contact") + '</th><th>Phone</th><th>Source</th><th>' + sortable("assignee","Assigned To") + '</th><th>' + sortable("stage","Stage") + '</th><th>' + sortable("created","Created Date") + '</th><th>Last Call</th><th>' + sortable("followup","Next Follow-up") + '</th><th>Action</th></tr></thead><tbody>' +
+    rows.map(c => { const call = latestCalls.get(c.id); return '<tr><td>' + esc(c.leadId || c.srNo || "—") + '</td><td><button class="crm-link" data-crm-action="detail" data-id="' + esc(c.id) + '">' + esc(c.businessName || c.contactPerson || "Unnamed") + '</button><small>' + esc(c.company || c.city || c.category || "") + '</small></td><td><a href="tel:' + esc(c.phone || "") + '">' + esc(c.phone || "—") + '</a></td><td>' + esc(c.source || "—") + '</td><td>' + esc(c.assignedTo || "Unassigned") + '</td><td><span class="status-pill">' + esc(c.status || "New Lead") + '</span></td><td>' + dateFmt(c._createdDate || c.createdAt || c.importedAt) + '</td><td>' + dateFmt(call && call.happenedAt) + '</td><td>' + dateFmt(c.followUpAt) + '</td><td><button type="button" class="btn btn-secondary" data-crm-action="call" data-id="' + esc(c.id) + '">Log call</button></td></tr>'; }).join("") +
     '</tbody></table></div>';
 }
 function leadList() {
   const rows = leads();
-  return head("LEAD MANAGEMENT", "All Leads", "Search and manage the full lead database.", '<button class="btn btn-primary" data-crm-action="new-lead">＋ Add lead</button>') +
-    '<div class="crm-filter-row"><input id="crm-search" class="input-control" placeholder="Search name, phone, company, lead ID…" value="' + esc(state.query) + '">' + projectSelect() + '<select id="crm-stage-filter" class="select-control"><option value="all">All stages</option>' + STAGES.map(s => '<option ' + (state.stage === s ? "selected" : "") + '>' + esc(s) + '</option>').join("") + '</select><select id="crm-source-filter" class="select-control"><option value="all">All sources</option>' + [...new Set(state.contacts.map(c=>c.source||"Unspecified"))].map(x=>'<option value="'+esc(x)+'" '+(state.sourceFilter===x?"selected":"")+' >'+esc(x)+'</option>').join("") + '</select><select id="crm-assignee-filter" class="select-control"><option value="all">All assignees</option>' + [...new Set(state.contacts.map(c=>c.assignedTo||"Unassigned"))].map(x=>'<option value="'+esc(x)+'" '+(state.assigneeFilter===x?"selected":"")+' >'+esc(x)+'</option>').join("") + '</select></div>' + leadTable(rows);
+  return head("LEAD MANAGEMENT", "All Leads", "All accessible leads in one list. Sort by name, lead ID, assigned owner, stage, creation date or follow-up; log calls directly from each row.", '<button class="btn btn-secondary" data-crm-action="import">⇧ Import CSV / Excel</button><button class="btn btn-primary" data-crm-action="new-lead">＋ Add lead</button>') + '<input id="crm-import-file" type="file" accept=".csv,.tsv,.xlsx,.xls" hidden>' +
+    '<div class="crm-filter-row"><input id="crm-search" class="input-control" placeholder="Search name, phone, company, lead ID…" value="' + esc(state.query) + '">' + projectSelect() + '<select id="crm-stage-filter"><option value="all">All stages</option>' + STAGES.map(s => '<option value="' + esc(s) + '" ' + (state.stage === s ? "selected" : "") + '>' + esc(s) + '</option>').join("") + '</select><select id="crm-source-filter"><option value="all">All sources</option>' + [...new Set(state.contacts.map(c=>c.source||"Unspecified"))].map(x=>'<option value="'+esc(x)+'" '+(state.sourceFilter===x?"selected":"")+' >'+esc(x)+'</option>').join("") + '</select><select id="crm-assignee-filter"><option value="all">All assignees</option>' + [...new Set(state.contacts.map(c=>c.assignedTo||"Unassigned"))].map(x=>'<option value="'+esc(x)+'" '+(state.assigneeFilter===x?"selected":"")+' >'+esc(x)+'</option>').join("") + '</select><span class="crm-muted">' + rows.length + ' leads shown · ' + state.contacts.length + ' loaded</span></div>' + leadTable(rows);
 }
 function pipeline() {
   const rows = leads();
@@ -247,6 +308,38 @@ async function saveAccess(form){
  await patchItemFields(COL.projects,p._id,{memberEmails:members});closeModal();await reload();toast("Project access saved.");
 }
 
+function taskView() {
+  const rows = state.tasks.filter(t => !state.projectId || t.projectId === state.projectId).sort((a,b) => String(a.dueAt || "9999").localeCompare(String(b.dueAt || "9999")));
+  const statusLabel = { open: "Open", in_progress: "In progress", done: "Done", cancelled: "Cancelled" };
+  return head("WORK MANAGEMENT", "Task Manager", "Assign follow-ups and internal work to a project, with clear ownership and status.", '<button class="btn btn-primary" data-crm-action="new-task">＋ New task</button>') +
+    '<div class="crm-filter-row">' + projectSelect() + '<span class="crm-muted">' + rows.length + ' tasks</span></div>' +
+    (rows.length ? '<section class="panel crm-task-list">' + rows.map(t => '<article class="crm-task-row"><div class="crm-task-main"><b>' + esc(t.title || "Untitled task") + '</b><small>' + esc(t.description || "") + '</small><small>' + esc(state.projects.find(p => p._id === t.projectId)?.name || "Project") + ' · ' + esc(t.assignedTo || "Unassigned") + ' · Due ' + dateFmt(t.dueAt) + '</small></div><select data-task-status="' + esc(t._id) + '" aria-label="Task status"><option value="open" ' + (t.status === "open" ? "selected" : "") + '>Open</option><option value="in_progress" ' + (t.status === "in_progress" ? "selected" : "") + '>In progress</option><option value="done" ' + (t.status === "done" ? "selected" : "") + '>Done</option><option value="cancelled" ' + (t.status === "cancelled" ? "selected" : "") + '>Cancelled</option></select></article>').join("") + '</section>' : '<section class="panel"><h3>No tasks yet</h3><p class="crm-muted">Create the first task for a project to track internal work and follow-ups.</p></section>');
+}
+
+function trashView() {
+  const rows = state.trash.filter(c => !state.projectId || c.projectId === state.projectId);
+  return head("RECOVERED RECORDS", "Trash", "Deleted leads are retained safely and can be restored. No permanent deletion is available.", '<span class="crm-muted">' + rows.length + ' items in Trash</span>') +
+    '<div class="crm-filter-row">' + projectSelect() + '</div>' +
+    (rows.length ? '<div class="crm-table-wrap"><table class="crm-table"><thead><tr><th>Lead</th><th>Phone</th><th>Project</th><th>Deleted on</th><th>Action</th></tr></thead><tbody>' +
+      rows.map(c => '<tr><td><b>' + esc(c.businessName || c.contactPerson || "Unnamed lead") + '</b><small>' + esc(c.company || c.city || "") + '</small></td><td>' + esc(c.phone || "—") + '</td><td>' + esc(state.projects.find(p => p._id === c.projectId)?.name || "Project") + '</td><td>' + dateFmt(c.deletedAt) + '</td><td><button class="btn btn-primary" data-crm-action="restore" data-id="' + esc(c._id) + '">Restore</button></td></tr>').join("") +
+      '</tbody></table></div>' : '<section class="panel crm-empty"><b>Trash is empty</b><p>Leads you move to Trash will appear here for recovery.</p></section>');
+}
+async function trashContact(id) {
+  const c = state.contacts.find(x => x.id === id);
+  if (!c) throw new Error("Lead not found.");
+  if (!["owner", "editor"].includes(role(state.projects.find(p => p._id === c.projectId)))) throw new Error("You do not have permission to move this lead to Trash.");
+  if (!window.confirm("Move this lead to Trash? You can restore it later.")) return;
+  await taskApi("/api/contacts/" + encodeURIComponent(id) + "/trash", "POST", {});
+  closeModal(); await reload(); toast("Lead moved to Trash. It can be restored.");
+}
+async function restoreContact(id) {
+  const c = state.trash.find(x => x._id === id);
+  if (!c) throw new Error("Trashed lead not found.");
+  if (!["owner", "editor"].includes(role(state.projects.find(p => p._id === c.projectId)))) throw new Error("You do not have permission to restore this lead.");
+  await taskApi("/api/trash/" + encodeURIComponent(id) + "/restore", "POST", {});
+  await reload(); toast("Lead restored successfully.");
+}
+
 function render() {
   const host = $("#crm-page");
   if (!host) return;
@@ -254,10 +347,13 @@ function render() {
     state.view === "pipeline" ? pipeline() :
     state.view === "due" || state.view === "upcoming" || state.view === "overdue" ? followups(state.view) :
     state.view === "calls" ? calls() :
+    state.view === "customers" || state.view === "lost" ? segmentList(state.view) :
     state.view === "companies" ? companies() :
     state.view === "activities" ? activitiesView() :
+    state.view === "tasks" ? taskView() :
     state.view === "automation" ? automationView() :
     state.view === "team" ? teamView() :
+    state.view === "trash" ? trashView() :
     state.view === "reports" ? reports() : leadList();
   host.querySelectorAll(".crm-stats,.crm-two-col,.crm-table-wrap,.crm-board,.panel").forEach(el => el.classList.add("crm-reveal"));
   const reveal = host.querySelectorAll(".crm-reveal");
@@ -272,6 +368,50 @@ function openModal(title, content) {
   $("#crm-modal").classList.add("open");
 }
 function closeModal() { $("#crm-modal").classList.remove("open"); }
+function newTaskModal() {
+  const editable = allowedProjects().filter(p => ["owner", "editor"].includes(role(p)));
+  if (!editable.length) { toast("No editable project is available for this account."); return; }
+  openModal("Create task", '<form id="crm-task-form"><div class="crm-form-grid">' +
+    '<label>Project *<select name="projectId" required>' + editable.map(p => '<option value="' + esc(p._id) + '">' + esc(p.name) + '</option>').join("") + '</select></label>' +
+    '<label>Task title *<input name="title" required maxlength="180" placeholder="e.g. Call prospect"></label>' +
+    '<label>Assigned to<input name="assignedTo" placeholder="Team member email"></label>' +
+    '<label>Due date<input name="dueAt" type="datetime-local"></label>' +
+    '<label>Priority<select name="priority"><option value="normal">Normal</option><option value="high">High</option><option value="low">Low</option></select></label>' +
+    '<label class="crm-wide">Description<textarea name="description" maxlength="1500"></textarea></label>' +
+    '</div><div class="crm-modal-actions"><button type="button" class="btn btn-secondary" data-crm-action="close">Cancel</button><button class="btn btn-primary">Create task</button></div></form>');
+}
+async function saveTask(form) {
+  const fd = new FormData(form), projectId = String(fd.get("projectId") || ""), title = String(fd.get("title") || "").trim();
+  if (!title) throw new Error("A task title is required.");
+  if (!["owner", "editor"].includes(role(state.projects.find(p => p._id === projectId)))) throw new Error("You do not have edit access to this project.");
+  await taskApi("/api/tasks", "POST", {
+    project_id: projectId,
+    title,
+    description: String(fd.get("description") || "").trim(),
+    assigned_to: String(fd.get("assignedTo") || state.member.loginEmail || "").trim(),
+    due_at: fd.get("dueAt") ? new Date(fd.get("dueAt")).toISOString() : null,
+    priority: String(fd.get("priority") || "normal")
+  });
+  closeModal();
+  await reload();
+  toast("Task created successfully.");
+}
+async function updateTaskStatus(taskId, status) {
+  if (!["open", "in_progress", "done", "cancelled"].includes(status)) throw new Error("Invalid task status.");
+  await taskApi("/api/tasks/" + encodeURIComponent(taskId), "PATCH", { status });
+  await reload();
+  toast("Task status updated.");
+}
+function newProjectModal() {
+  if (!allowedProjects().some(p => role(p) === "owner")) {
+    toast("Only a workspace owner can create a project.");
+    return;
+  }
+  openModal("Create project", '<form id="crm-project-form"><div class="crm-form-grid">' +
+    '<label>Project name *<input name="name" required maxlength="120" placeholder="e.g. Ekdant Digital Marketing"></label>' +
+    '<label class="crm-wide">Description<textarea name="description" maxlength="1000" placeholder="What is this project for?"></textarea></label>' +
+    '</div><div class="crm-modal-actions"><button type="button" class="btn btn-secondary" data-crm-action="close">Cancel</button><button class="btn btn-primary">Create project</button></div></form>');
+}
 function newLeadModal() {
   const editable = allowedProjects().filter(p => ["owner", "editor"].includes(role(p)));
   if (!editable.length) { toast("No editable project is available for this account."); return; }
@@ -300,14 +440,31 @@ function detailModal(id) {
   const c = state.contacts.find(x => x.id === id);
   if (!c) return;
   const wa = String(c.whatsapp || c.phone || "").replace(/\D/g, "");
+  const website = safeExternalUrl(c.website);
   const activity = state.activities.filter(a => a.contactId === id).sort((a, b) => new Date(b.happenedAt || 0) - new Date(a.happenedAt || 0)).slice(0, 12);
   openModal(c.businessName || c.contactPerson || "Lead profile", '<div class="crm-detail-grid">' +
     [["Lead ID", c.leadId || c.srNo || id], ["Status", c.status], ["Phone", c.phone], ["WhatsApp", c.whatsapp || c.phone], ["Email", c.email], ["Company", c.company], ["City", c.city || c.area], ["Source", c.source], ["Campaign", c.campaign], ["Assigned to", c.assignedTo], ["Priority", c.priority], ["Follow-up", dateFmt(c.followUpAt)], ["Deal value", c.dealValue ? "₹" + c.dealValue : "—"], ["Payment status", c.paymentStatus], ["Industry", c.industry], ["Website", c.website], ["Tags", c.tags], ["Custom field 1", c.customField1], ["Custom field 2", c.customField2]].map(x => '<div><small>' + x[0] + '</small><b>' + esc(x[1] || "—") + '</b></div>').join("") + '</div>' +
-    '<div class="crm-modal-actions"><a class="btn btn-secondary" href="tel:' + esc(c.phone || "") + '">Call</a>' + (c.email ? '<a class="btn btn-secondary" href="mailto:' + esc(c.email) + '">Email</a>' : "") + (c.website ? '<a class="btn btn-secondary" target="_blank" rel="noopener" href="' + esc(c.website) + '">Website</a>' : "") + (wa ? '<a class="btn btn-secondary" target="_blank" rel="noopener" href="https://wa.me/' + wa + '">WhatsApp</a>' : "") + '<button class="btn btn-primary" data-crm-action="call" data-id="' + id + '">＋ Log call</button></div>' +
+    '<div class="crm-modal-actions"><a class="btn btn-secondary" href="tel:' + esc(c.phone || "") + '">Call</a>' + (c.email ? '<a class="btn btn-secondary" href="mailto:' + esc(c.email) + '">Email</a>' : "") + (website ? '<a class="btn btn-secondary" target="_blank" rel="noopener noreferrer" href="' + esc(website) + '">Website</a>' : "") + (wa ? '<a class="btn btn-secondary" target="_blank" rel="noopener" href="https://wa.me/' + wa + '">WhatsApp</a>' : "") + '<button class="btn btn-primary" data-crm-action="call" data-id="' + id + '">＋ Log call</button>' + (["owner", "editor"].includes(role(state.projects.find(p => p._id === c.projectId))) ? '<button class="btn btn-secondary" data-crm-action="trash" data-id="' + id + '">Move to Trash</button>' : "") + '</div>' +
     '<section class="crm-history"><b>Activity timeline</b>' + (activity.map(a => '<div><b>' + esc(a.callOutcome || a.newStatus || a.activityType) + '</b><small>' + dateFmt(a.happenedAt) + ' · ' + esc(a.remark || "") + '</small></div>').join("") || '<p>No activity yet.</p>') + '</section>');
 }
 function statusForOutcome(outcome) {
   return ({ "Interested": "Interested", "Not Interested": "Not Interested", "No Answer": "Not Picked", "Busy": "Not Picked", "Switch Off": "Not Picked", "Wrong Number": "Wrong Number", "Call Back Later": "Attempted", "Meeting Scheduled": "Connected", "Converted": "Converted / Won", "Lost": "Lost" })[outcome] || "Attempted";
+}
+async function saveProject(form) {
+  if (!allowedProjects().some(p => role(p) === "owner")) throw new Error("Only a workspace owner can create a project.");
+  const fd = new FormData(form);
+  const name = String(fd.get("name") || "").trim();
+  if (!name) throw new Error("A project name is required.");
+  const project = await insertItem(COL.projects, {
+    name,
+    description: String(fd.get("description") || "").trim(),
+    createdBy: state.member.loginEmail || "",
+    memberEmails: []
+  });
+  state.projectId = project._id;
+  closeModal();
+  await reload();
+  toast("Project created successfully.");
 }
 async function saveLead(form) {
   const fd = new FormData(form), projectId = String(fd.get("projectId") || "");
@@ -365,6 +522,89 @@ async function moveStage(id, next) {
   await insertItem(COL.activity, { projectId: c.projectId, contactId: id, activityType: "Status change", oldStatus: c.status || "New Lead", newStatus: next, actorEmail: state.member.loginEmail || "", actorName: state.member.displayName || "", happenedAt: at });
   await reload(); toast("Lead moved to " + next);
 }
+function normalizeImportHeader(value) {
+  return String(value || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+function importValue(row, aliases) {
+  const wanted = new Set(aliases);
+  for (const [key, value] of Object.entries(row)) if (wanted.has(normalizeImportHeader(key))) return value;
+  return "";
+}
+function parseImportDate(value) {
+  if (!value) return undefined;
+  const direct = new Date(value);
+  if (!Number.isNaN(direct.getTime())) return direct;
+  const m = String(value).trim().match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})$/);
+  if (!m) return undefined;
+  let year = Number(m[3]); if (year < 100) year += 2000;
+  const date = new Date(year, Number(m[2]) - 1, Number(m[1]));
+  return Number.isNaN(date.getTime()) ? undefined : date;
+}
+async function importSpreadsheet(file) {
+  const projects = allowedProjects().filter(p => ["owner", "editor"].includes(role(p)));
+  const projectId = state.projectId || (projects.length === 1 ? projects[0]._id : "");
+  if (!projectId || !projects.some(p => p._id === projectId)) throw new Error("Select an editable project before importing.");
+  if (!window.XLSX) throw new Error("The spreadsheet reader is not available. Export the file as CSV and try again.");
+  const bytes = await file.arrayBuffer();
+  const workbook = window.XLSX.read(bytes, { type: "array", cellDates: true });
+  const sheet = workbook.Sheets[workbook.SheetNames[0]];
+  const rows = window.XLSX.utils.sheet_to_json(sheet, { defval: "", raw: false });
+  if (!rows.length) throw new Error("The selected file has no lead rows.");
+  const known = new Set(state.contacts.filter(c => c.projectId === projectId).map(c => String(c.phone || "").replace(/\D/g, "")).filter(Boolean));
+  let imported = 0, skipped = 0, failed = 0;
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i], phone = String(importValue(row, ["phone", "mobile", "mobilenumber", "phonenumber", "contactnumber", "telephone"]) || "").trim();
+    const normalized = phone.replace(/\D/g, "");
+    if (!normalized || known.has(normalized)) { skipped++; continue; }
+    const followUp = parseImportDate(importValue(row, ["followup", "followupdate", "nextfollowup", "followupat"]));
+    const dealValue = Number(String(importValue(row, ["dealvalue", "value", "budget", "amount"]) || "0").replace(/[₹,\s]/g, "")) || 0;
+    const payload = {
+      projectId,
+      leadId: String(importValue(row, ["leadid", "id", "srno"]) || ("EKD-" + Date.now().toString().slice(-7) + "-" + (i + 1))),
+      businessName: String(importValue(row, ["businessname", "business", "organization", "companyname", "leadname", "name"]) || "").trim(),
+      contactPerson: String(importValue(row, ["contactperson", "contactname", "fullname", "person"]) || "").trim(),
+      phone,
+      phoneNormalized: normalized,
+      whatsapp: String(importValue(row, ["whatsapp", "whatsappnumber", "wa"]) || "").trim(),
+      email: String(importValue(row, ["email", "emailaddress"]) || "").trim(),
+      company: String(importValue(row, ["company", "organizationname"]) || "").trim(),
+      city: String(importValue(row, ["city", "town"]) || "").trim(),
+      area: String(importValue(row, ["area", "locality", "location"]) || "").trim(),
+      address: String(importValue(row, ["address", "fulladdress"]) || "").trim(),
+      source: String(importValue(row, ["source", "leadsource", "platform"]) || "Spreadsheet Import").trim(),
+      campaign: String(importValue(row, ["campaign", "campaignname"]) || "").trim(),
+      category: String(importValue(row, ["category", "interest", "service"]) || "").trim(),
+      industry: String(importValue(row, ["industry", "businesscategory"]) || "").trim(),
+      website: String(importValue(row, ["website", "url"]) || "").trim(),
+      assignedTo: String(importValue(row, ["assignedto", "assignee", "owner"]) || state.member.loginEmail || "").trim(),
+      status: String(importValue(row, ["status", "stage", "leadstatus"]) || "New Lead").trim(),
+      priority: String(importValue(row, ["priority"]) || "Normal").trim(),
+      followUpAt: followUp,
+      dealValue,
+      remark: String(importValue(row, ["remark", "notes", "comments", "description"]) || "").trim(),
+      importedAt: new Date(),
+      statusChangedAt: new Date(),
+      doNotContact: false
+    };
+    try {
+      await insertItem(COL.contacts, payload);
+      known.add(normalized);
+      imported++;
+    } catch (e) {
+      failed++;
+    }
+  }
+  if (imported) await insertItem(COL.activity, {
+    projectId,
+    activityType: "Bulk import",
+    actorEmail: state.member.loginEmail || "",
+    actorName: state.member.displayName || "",
+    happenedAt: new Date(),
+    remark: imported + " leads imported from " + file.name
+  });
+  await reload();
+  toast(imported + " leads imported · " + skipped + " skipped · " + failed + " failed");
+}
 function exportCsv() {
   const keys = ["leadId", "businessName", "contactPerson", "phone", "whatsapp", "email", "company", "city", "source", "campaign", "assignedTo", "status", "priority", "followUpAt", "dealValue"];
   const csv = [keys.join(","), ...leads().map(c => keys.map(k => '"' + String(c[k] == null ? "" : c[k]).replace(/"/g, '""') + '"').join(","))].join("\r\n");
@@ -375,18 +615,34 @@ function click(e) {
   const b = e.target.closest("[data-crm-action]");
   if (b) {
     const a = b.dataset.crmAction;
+    if (a === "new-project") newProjectModal();
+    if (a === "import") $("#crm-import-file")?.click();
+    if (a === "new-task") newTaskModal();
     if (a === "new-lead") newLeadModal();
     if (a === "new-activity") newActivityModal();
     if (a === "manage-access") manageAccess(b.dataset.id);
     if (a === "call") callModal(b.dataset.id);
     if (a === "detail") detailModal(b.dataset.id);
+     if (a === "trash") trashContact(b.dataset.id).catch(err => toast("Could not move lead to Trash: " + err.message));
+     if (a === "restore") restoreContact(b.dataset.id).catch(err => toast("Could not restore lead: " + err.message));
     if (a === "close") closeModal();
     if (a === "export") exportCsv();
+    if (a === "sort-direction") { state.sortDirection = state.sortDirection === "asc" ? "desc" : "asc"; render(); }
+  }
+  const sort = e.target.closest("[data-crm-sort]");
+  if (sort) {
+    const key = sort.dataset.crmSort;
+    state.sortDir = state.sortKey === key && state.sortDir === "asc" ? "desc" : "asc";
+    state.sortKey = key;
+    render();
+    return;
   }
   const nav = e.target.closest("[data-crm-nav]");
   if (nav) setView(nav.dataset.crmNav);
 }
 async function submit(e) {
+  if (e.target.id === "crm-project-form") { e.preventDefault(); const button = e.target.querySelector('button[type="submit"]'); if (button) { button.disabled = true; button.textContent = "Creating…"; } try { await saveProject(e.target); } catch (err) { if (button) { button.disabled = false; button.textContent = "Create project"; } toast("Project not created: " + err.message); } }
+  if (e.target.id === "crm-task-form") { e.preventDefault(); const button = e.target.querySelector('button[type="submit"]'); if (button) { button.disabled = true; button.textContent = "Creating…"; } try { await saveTask(e.target); } catch (err) { if (button) { button.disabled = false; button.textContent = "Create task"; } toast("Task not created: " + err.message); } }
   if (e.target.id === "crm-lead-form") {
     e.preventDefault(); const button = e.target.querySelector('button[type="submit"]');
     if (button) { button.disabled = true; button.textContent = "Saving…"; }
@@ -401,10 +657,13 @@ async function submit(e) {
   }
 }
 function change(e) {
+  if (e.target.id === "crm-import-file" && e.target.files && e.target.files[0]) { const file = e.target.files[0]; importSpreadsheet(file).catch(err => toast("Import failed: " + err.message)).finally(() => { e.target.value = ""; }); }
   if (e.target.id === "crm-project-filter") { state.projectId = e.target.value; render(); }
   if (e.target.id === "crm-stage-filter") { state.stage = e.target.value || "all"; render(); }
   if (e.target.id === "crm-source-filter") { state.sourceFilter = e.target.value || "all"; render(); }
   if (e.target.id === "crm-assignee-filter") { state.assigneeFilter = e.target.value || "all"; render(); }
+  if (e.target.id === "crm-sort") { state.sortBy = e.target.value || "created"; render(); }
+  if (e.target.matches("[data-task-status]")) updateTaskStatus(e.target.dataset.taskStatus, e.target.value).catch(err => toast("Task status not updated: " + err.message));
   if (e.target.matches("[data-automation-rule]")) saveAutomationRule(e.target.dataset.automationRule,e.target.checked).catch(err=>{e.target.checked=!e.target.checked;toast(err.message)});
   if (e.target.matches("[data-crm-status]")) { const id = e.target.dataset.crmStatus, next = e.target.value; e.target.value = ""; if (next) moveStage(id, next).catch(err => toast(err.message)); }
 }
@@ -418,17 +677,93 @@ function mount() {
   const crmPage = document.createElement("div"); crmPage.id = "crm-page";
   const pageWrap = document.querySelector(".page-wrap");
   if (pageWrap) pageWrap.append(crmPage);
+
+  const crumb = $(".crumb");
+  if (crumb && !$("#crm-mobile-menu-toggle")) {
+    const toggle = document.createElement("button");
+    toggle.id = "crm-mobile-menu-toggle";
+    toggle.className = "crm-mobile-menu-toggle";
+    toggle.type = "button";
+    toggle.textContent = "☰";
+    toggle.title = "Open navigation";
+    toggle.setAttribute("aria-label", "Open navigation");
+    toggle.setAttribute("aria-expanded", "false");
+    toggle.setAttribute("aria-controls", "crm-sidebar");
+    toggle.addEventListener("click", () => {
+      const sidebar = $(".sidebar");
+      const scrim = $("#crm-mobile-nav-scrim");
+      const open = !!sidebar && !sidebar.classList.contains("mobile-open");
+      if (sidebar) sidebar.classList.toggle("mobile-open", open);
+      if (scrim) scrim.classList.toggle("open", open);
+      toggle.setAttribute("aria-expanded", String(open));
+      toggle.setAttribute("aria-label", open ? "Close navigation" : "Open navigation");
+      syncMobileNavAccessibility(open);
+      if (open && sidebar) {
+        const firstLink = sidebar.querySelector("[data-crm-view]");
+        if (firstLink) firstLink.focus();
+      }
+    });
+    crumb.prepend(toggle);
+
+    const scrim = document.createElement("button");
+    scrim.id = "crm-mobile-nav-scrim";
+    scrim.className = "crm-mobile-nav-scrim";
+    scrim.type = "button";
+    scrim.setAttribute("aria-label", "Close navigation");
+    scrim.setAttribute("aria-hidden", "true");
+    scrim.addEventListener("click", closeMobileNav);
+    document.body.append(scrim);
+  }
+
+  const sidebar = $(".sidebar");
+  if (sidebar) {
+    sidebar.id = "crm-sidebar";
+    sidebar.setAttribute("role", "navigation");
+    sidebar.setAttribute("aria-label", "CRM navigation");
+  }
   const nav = $(".main-nav");
   if (nav) {
+    nav.setAttribute("aria-label", "CRM sections");
+    if (!nav.dataset.crmDelegated) {
+      nav.dataset.crmDelegated = "true";
+      nav.addEventListener("click", e => {
+        const button = e.target.closest("[data-crm-view]");
+        if (button && nav.contains(button)) { e.preventDefault(); setView(button.dataset.crmView); }
+      });
+    }
     nav.querySelectorAll(":scope > .nav-item, :scope > .nav-label").forEach(el => { el.style.display = "none"; });
     const group = document.createElement("span"); group.className = "nav-label"; group.textContent = "EKDANT CRM";
     nav.append(group);
-    [["overview", "CRM Overview"], ["leads", "All Leads"], ["pipeline", "Deal Pipeline"], ["companies", "Companies"], ["due", "Due Today"], ["upcoming", "Upcoming"], ["overdue", "Overdue"], ["calls", "Call History"], ["activities", "Activities"], ["automation", "Automation"], ["team", "Team & Access"], ["reports", "CRM Reports"]].forEach(x => {
-      const button = document.createElement("button"); button.className = "nav-item crm-nav-item"; button.dataset.crmView = x[0]; button.textContent = x[1]; button.addEventListener("click", () => setView(x[0])); nav.append(button);
+    const navItems = [
+      ["overview", "CRM Overview", "◫"], ["leads", "All Leads", "☷"],
+      ["customers", "Converted Customers", "✓"], ["lost", "Lost Leads", "⊘"],
+      ["pipeline", "Deal Pipeline", "▥"], ["companies", "Companies", "▦"],
+      ["due", "Due Today", "◷"], ["upcoming", "Upcoming", "↗"],
+      ["overdue", "Overdue", "!"], ["calls", "Call History", "☎"],
+      ["activities", "Activities", "◌"], ["tasks", "Task Manager", "✓"], ["automation", "Automation", "⚙"],
+      ["team", "Team & Access", "♧"], ["trash", "Trash & Restore", "⌫"], ["reports", "CRM Reports", "▤"]
+    ];
+    navItems.forEach(([view, label, glyph]) => {
+      const button = document.createElement("button");
+      button.className = "nav-item crm-nav-item";
+      button.dataset.crmView = view;
+      button.title = label;
+      button.setAttribute("aria-label", label);
+      button.setAttribute("type", "button");
+      const icon = document.createElement("span");
+      icon.className = "nav-ico";
+      icon.setAttribute("aria-hidden", "true");
+      icon.textContent = glyph;
+      const text = document.createElement("span");
+      text.className = "crm-nav-text";
+      text.textContent = label;
+      button.append(icon, text);
+      if (view === state.view) button.setAttribute("aria-current", "page");
+      nav.append(button);
     });
   }
   const modal = document.createElement("div"); modal.id = "crm-modal"; modal.className = "crm-modal-backdrop";
-  modal.innerHTML = '<section class="crm-modal"><header><div><span class="eyebrow">EKDANT LEADDESK</span><h2 id="crm-modal-title">CRM</h2></div><button class="icon-btn" data-crm-action="close">×</button></header><div id="crm-modal-content"></div></section>';
+  modal.innerHTML = '<section class="crm-modal"><header><div><span class="eyebrow">VISTAAR</span><h2 id="crm-modal-title">CRM</h2></div><button class="icon-btn" data-crm-action="close">×</button></header><div id="crm-modal-content"></div></section>';
   document.body.append(modal);
   modal.addEventListener("click", e => { if (e.target === modal) closeModal(); });
   
@@ -444,7 +779,12 @@ function mount() {
   $("#crm-modal-content").addEventListener("submit", submit);
   $("#crm-modal-content").addEventListener("change", change);
   $("#export-btn").addEventListener("click", exportCsv);
-  document.addEventListener("keydown", e => { if (e.key === "Escape") closeModal(); });
+  syncMobileNavAccessibility(false);
+  window.addEventListener("resize", () => {
+    const sidebar = $(".sidebar");
+    syncMobileNavAccessibility(!!(sidebar && sidebar.classList.contains("mobile-open")));
+  });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") { closeModal(); closeMobileNav(); } });
 }
 function onMember(s) {
   if (!s || s.loading || !s.loggedIn || !s.member) return;

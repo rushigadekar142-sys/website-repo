@@ -119,12 +119,20 @@ export async function accessToken() {
         return t.accessToken;
     pending ??= (async () => {
         let fresh;
+        if (t?.role === "member" && !t.refreshToken) {
+            clearTokens();
+            throw new Error("Your Wix member session expired. Sign in again.");
+        }
         if (t?.refreshToken) {
             try {
                 fresh = await mintTokens({ grantType: "refresh_token", refreshToken: t.refreshToken }, t.role ?? "visitor");
             }
             catch {
-                /* fall through to a new visitor */
+                if (t.role === "member") {
+                    clearTokens();
+                    throw new Error("Your Wix member session expired. Sign in again.");
+                }
+                /* Anonymous visitor refresh can safely start a new visitor session. */
             }
         }
         fresh ??= await mintTokens({ grantType: "anonymous" });
