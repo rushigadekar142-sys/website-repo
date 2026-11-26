@@ -11,7 +11,7 @@ const $ = (s, root = document) => root.querySelector(s);
 const esc = v => String(v == null ? "" : v).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const dateFmt = v => v ? new Intl.DateTimeFormat("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(v)) : "—";
 const dayStart = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
-const state = { member: null, projects: [], contacts: [], activities: [], tasks: [], view: "overview", trash: [], query: "", projectId: "", stage: "all", sourceFilter: "all", assigneeFilter: "all" };
+const state = { member: null, projects: [], contacts: [], activities: [], tasks: [], view: "overview", trash: [], query: "", projectId: "", stage: "all", sourceFilter: "all", assigneeFilter: "all", sortBy: "created", sortDirection: "desc" };
 let mounted = false;
 
 async function allItems(collection) {
@@ -56,6 +56,24 @@ function leads() {
   if (state.stage !== "all") rows = rows.filter(c => (c.status || "New Lead") === state.stage);
   if (state.sourceFilter !== "all") rows = rows.filter(c => (c.source || "Unspecified") === state.sourceFilter);
   if (state.assigneeFilter !== "all") rows = rows.filter(c => (c.assignedTo || "Unassigned") === state.assigneeFilter);
+  const dateValue = c => {
+    const raw = state.sortBy === "updated" ? (c._updatedDate || c.updatedAt || c.statusChangedAt || c._createdDate || c.importedAt) :
+      state.sortBy === "followUp" ? c.followUpAt : (c._createdDate || c.importedAt || c.createdAt);
+    const n = raw ? new Date(raw).getTime() : NaN;
+    return Number.isFinite(n) ? n : null;
+  };
+  const collator = new Intl.Collator("en", { sensitivity: "base", numeric: true });
+  rows.sort((a, b) => {
+    let cmp = 0;
+    if (state.sortBy === "name") cmp = collator.compare(a.businessName || a.contactPerson || "", b.businessName || b.contactPerson || "");
+    else if (state.sortBy === "phone") cmp = collator.compare(a.phone || "", b.phone || "");
+    else if (state.sortBy === "status") cmp = collator.compare(a.status || "", b.status || "");
+    else {
+      const av = dateValue(a), bv = dateValue(b);
+      cmp = av == null ? (bv == null ? 0 : 1) : bv == null ? -1 : av - bv;
+    }
+    return state.sortDirection === "asc" ? cmp : -cmp;
+  });
   return rows;
 }
 async function reload() {
@@ -147,14 +165,19 @@ function overview() {
     (recent.map(a => '<div class="crm-follow-row"><div><b>' + esc(a.callOutcome || a.newStatus || a.activityType || "Activity") + '</b><small>' + esc(a.actorName || a.actorEmail || "Team member") + ' · ' + dateFmt(a.happenedAt) + '</small></div><span class="crm-muted">' + esc(a.remark || "") + '</span></div>').join("") || '<p class="crm-muted">No activity recorded yet.</p>') + '</section>';
 }
 function leadTable(rows) {
-  return '<div class="crm-table-wrap"><table class="crm-table"><thead><tr><th>Lead ID</th><th>Business / Contact</th><th>Phone</th><th>Source</th><th>Assigned To</th><th>Stage</th><th>Next Follow-up</th><th>Action</th></tr></thead><tbody>' +
-    rows.map(c => '<tr><td>' + esc(c.leadId || c.srNo || "—") + '</td><td><button class="crm-link" data-crm-action="detail" data-id="' + c.id + '">' + esc(c.businessName || c.contactPerson || "Unnamed") + '</button><small>' + esc(c.company || c.city || c.category || "") + '</small></td><td><a href="tel:' + esc(c.phone || "") + '">' + esc(c.phone || "—") + '</a></td><td>' + esc(c.source || "—") + '</td><td>' + esc(c.assignedTo || "Unassigned") + '</td><td><span class="status-pill">' + esc(c.status || "New Lead") + '</span></td><td>' + dateFmt(c.followUpAt) + '</td><td><button class="btn btn-secondary" data-crm-action="call" data-id="' + c.id + '">Log call</button></td></tr>').join("") +
+  return '<div class="crm-table-wrap"><table class="crm-table"><thead><tr><th>Lead ID</th><th>Business / Contact</th><th>Phone</th><th>Created</th><th>Last Updated</th><th>Source</th><th>Assigned To</th><th>Stage</th><th>Next Follow-up</th><th>Call / Action</th></tr></thead><tbody>' +
+    rows.map(c => {
+      const created = c._createdDate || c.importedAt || c.createdAt;
+      const updated = c._updatedDate || c.updatedAt || c.statusChangedAt || created;
+      const phone = String(c.phone || "").trim();
+      return '<tr><td>' + esc(c.leadId || c.srNo || "—") + '</td><td><button class="crm-link" data-crm-action="detail" data-id="' + c.id + '">' + esc(c.businessName || c.contactPerson || "Unnamed") + '</button><small>' + esc(c.contactPerson || c.company || c.city || c.category || "") + '</small></td><td>' + (phone ? '<a href="tel:' + esc(phone) + '">' + esc(phone) + '</a>' : '—') + '</td><td>' + dateFmt(created) + '</td><td>' + dateFmt(updated) + '</td><td>' + esc(c.source || "—") + '</td><td>' + esc(c.assignedTo || "Unassigned") + '</td><td><span class="status-pill">' + esc(c.status || "New Lead") + '</span></td><td>' + dateFmt(c.followUpAt) + '</td><td><button class="btn btn-secondary" data-crm-action="call" data-id="' + c.id + '">Log call</button></td></tr>';
+    }).join("") +
     '</tbody></table></div>';
 }
 function leadList() {
   const rows = leads();
   return head("LEAD MANAGEMENT", "All Leads", "Search and manage the full lead database.", '<button class="btn btn-secondary" data-crm-action="import">⇧ Import CSV / Excel</button><button class="btn btn-primary" data-crm-action="new-lead">＋ Add lead</button>') + '<input id="crm-import-file" type="file" accept=".csv,.tsv,.xlsx,.xls" hidden>' +
-    '<div class="crm-filter-row"><input id="crm-search" class="input-control" placeholder="Search name, phone, company, lead ID…" value="' + esc(state.query) + '">' + projectSelect() + '<select id="crm-stage-filter" class="select-control"><option value="all">All stages</option>' + STAGES.map(s => '<option ' + (state.stage === s ? "selected" : "") + '>' + esc(s) + '</option>').join("") + '</select><select id="crm-source-filter" class="select-control"><option value="all">All sources</option>' + [...new Set(state.contacts.map(c=>c.source||"Unspecified"))].map(x=>'<option value="'+esc(x)+'" '+(state.sourceFilter===x?"selected":"")+' >'+esc(x)+'</option>').join("") + '</select><select id="crm-assignee-filter" class="select-control"><option value="all">All assignees</option>' + [...new Set(state.contacts.map(c=>c.assignedTo||"Unassigned"))].map(x=>'<option value="'+esc(x)+'" '+(state.assigneeFilter===x?"selected":"")+' >'+esc(x)+'</option>').join("") + '</select></div>' + leadTable(rows);
+    '<div class="crm-filter-row"><input id="crm-search" class="input-control" placeholder="Search name, phone, company, lead ID…" value="' + esc(state.query) + '">' + projectSelect() + '<select id="crm-stage-filter" class="select-control"><option value="all">All stages</option>' + STAGES.map(s => '<option ' + (state.stage === s ? "selected" : "") + '>' + esc(s) + '</option>').join("") + '</select><select id="crm-source-filter" class="select-control"><option value="all">All sources</option>' + [...new Set(state.contacts.map(c=>c.source||"Unspecified"))].map(x=>'<option value="'+esc(x)+'" '+(state.sourceFilter===x?"selected":"")+' >'+esc(x)+'</option>').join("") + '</select><select id="crm-assignee-filter" class="select-control"><option value="all">All assignees</option>' + [...new Set(state.contacts.map(c=>c.assignedTo||"Unassigned"))].map(x=>'<option value="'+esc(x)+'" '+(state.assigneeFilter===x?"selected":"")+' >'+esc(x)+'</option>').join("") + '</select><select id="crm-sort" class="select-control" aria-label="Sort leads"><option value="created" ' + (state.sortBy === "created" ? "selected" : "") + '>Sort: Date added</option><option value="updated" ' + (state.sortBy === "updated" ? "selected" : "") + '>Sort: Last updated</option><option value="name" ' + (state.sortBy === "name" ? "selected" : "") + '>Sort: Name</option><option value="followUp" ' + (state.sortBy === "followUp" ? "selected" : "") + '>Sort: Follow-up date</option><option value="phone" ' + (state.sortBy === "phone" ? "selected" : "") + '>Sort: Phone</option><option value="status" ' + (state.sortBy === "status" ? "selected" : "") + '>Sort: Stage</option></select><button class="btn btn-secondary" type="button" data-crm-action="sort-direction">' + (state.sortDirection === "asc" ? "Oldest / A–Z ↑" : "Newest / Z–A ↓") + '</button><span class="crm-muted" aria-live="polite">Showing all ' + rows.length + ' matching leads · ' + state.contacts.length + ' loaded</span></div>' + (rows.length ? leadTable(rows) : '<section class="panel crm-empty"><b>No matching leads</b><p>Change the search or filters to see more records.</p></section>');
 }
 function pipeline() {
   const rows = leads();
@@ -609,6 +632,7 @@ function click(e) {
      if (a === "restore") restoreContact(b.dataset.id).catch(err => toast("Could not restore lead: " + err.message));
     if (a === "close") closeModal();
     if (a === "export") exportCsv();
+    if (a === "sort-direction") { state.sortDirection = state.sortDirection === "asc" ? "desc" : "asc"; render(); }
   }
   const nav = e.target.closest("[data-crm-nav]");
   if (nav) setView(nav.dataset.crmNav);
@@ -635,6 +659,7 @@ function change(e) {
   if (e.target.id === "crm-stage-filter") { state.stage = e.target.value || "all"; render(); }
   if (e.target.id === "crm-source-filter") { state.sourceFilter = e.target.value || "all"; render(); }
   if (e.target.id === "crm-assignee-filter") { state.assigneeFilter = e.target.value || "all"; render(); }
+  if (e.target.id === "crm-sort") { state.sortBy = e.target.value || "created"; render(); }
   if (e.target.matches("[data-task-status]")) updateTaskStatus(e.target.dataset.taskStatus, e.target.value).catch(err => toast("Task status not updated: " + err.message));
   if (e.target.matches("[data-automation-rule]")) saveAutomationRule(e.target.dataset.automationRule,e.target.checked).catch(err=>{e.target.checked=!e.target.checked;toast(err.message)});
   if (e.target.matches("[data-crm-status]")) { const id = e.target.dataset.crmStatus, next = e.target.value; e.target.value = ""; if (next) moveStage(id, next).catch(err => toast(err.message)); }
@@ -722,9 +747,12 @@ function mount() {
       text.className = "crm-nav-text";
       text.textContent = label;
       button.append(icon, text);
-      button.addEventListener("click", () => setView(view));
       if (view === state.view) button.setAttribute("aria-current", "page");
       nav.append(button);
+    });
+    nav.addEventListener("click", e => {
+      const item = e.target.closest("[data-crm-view]");
+      if (item && nav.contains(item)) setView(item.dataset.crmView);
     });
   }
   const modal = document.createElement("div"); modal.id = "crm-modal"; modal.className = "crm-modal-backdrop";
