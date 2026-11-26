@@ -158,27 +158,15 @@ function overview() {
     (recent.map(a => '<div class="crm-follow-row"><div><b>' + esc(a.callOutcome || a.newStatus || a.activityType || "Activity") + '</b><small>' + esc(a.actorName || a.actorEmail || "Team member") + ' · ' + dateFmt(a.happenedAt) + '</small></div><span class="crm-muted">' + esc(a.remark || "") + '</span></div>').join("") || '<p class="crm-muted">No activity recorded yet.</p>') + '</section>';
 }
 function leadTable(rows) {
-  return '<div class="crm-table-wrap"><table class="crm-table"><thead><tr><th>Lead ID</th><th>Business / Contact</th><th>Phone</th><th>Created</th><th>Last Updated</th><th>Source</th><th>Assigned To</th><th>Stage</th><th>Next Follow-up</th><th>Call / Action</th></tr></thead><tbody>' +
-    rows.map(c => {
-      const created = c._createdDate || c.importedAt || c.createdAt;
-      const updated = c._updatedDate || c.updatedAt || c.statusChangedAt || created;
-      const phone = String(c.phone || "").trim();
-      return '<tr><td>' + esc(c.leadId || c.srNo || "—") + '</td><td><button class="crm-link" data-crm-action="detail" data-id="' + c.id + '">' + esc(c.businessName || c.contactPerson || "Unnamed") + '</button><small>' + esc(c.contactPerson || c.company || c.city || c.category || "") + '</small></td><td>' + (phone ? '<a href="tel:' + esc(phone) + '">' + esc(phone) + '</a>' : '—') + '</td><td>' + dateFmt(created) + '</td><td>' + dateFmt(updated) + '</td><td>' + esc(c.source || "—") + '</td><td>' + esc(c.assignedTo || "Unassigned") + '</td><td><span class="status-pill">' + esc(c.status || "New Lead") + '</span></td><td>' + dateFmt(c.followUpAt) + '</td><td><button class="btn btn-secondary" data-crm-action="call" data-id="' + c.id + '">Log call</button></td></tr>';
-    }).join("") +
+  const latestCalls = new Map();
+  state.activities.filter(a => a.activityType === "Call").forEach(a => {
+    const prev = latestCalls.get(a.contactId);
+    if (!prev || new Date(a.happenedAt || 0) > new Date(prev.happenedAt || 0)) latestCalls.set(a.contactId, a);
+  });
+  const sortable = (key,label) => '<button type="button" class="crm-sort-button" data-crm-sort="' + key + '">' + label + (state.sortKey === key ? (state.sortDir === "asc" ? ' ↑' : ' ↓') : ' ↕') + '</button>';
+  return '<div class="crm-table-wrap"><table class="crm-table"><thead><tr><th>' + sortable("leadId","Lead ID") + '</th><th>' + sortable("name","Business / Contact") + '</th><th>Phone</th><th>Source</th><th>' + sortable("assignee","Assigned To") + '</th><th>' + sortable("stage","Stage") + '</th><th>' + sortable("created","Created Date") + '</th><th>Last Call</th><th>' + sortable("followup","Next Follow-up") + '</th><th>Action</th></tr></thead><tbody>' +
+    rows.map(c => { const call = latestCalls.get(c.id); return '<tr><td>' + esc(c.leadId || c.srNo || "—") + '</td><td><button class="crm-link" data-crm-action="detail" data-id="' + esc(c.id) + '">' + esc(c.businessName || c.contactPerson || "Unnamed") + '</button><small>' + esc(c.company || c.city || c.category || "") + '</small></td><td><a href="tel:' + esc(c.phone || "") + '">' + esc(c.phone || "—") + '</a></td><td>' + esc(c.source || "—") + '</td><td>' + esc(c.assignedTo || "Unassigned") + '</td><td><span class="status-pill">' + esc(c.status || "New Lead") + '</span></td><td>' + dateFmt(c._createdDate || c.createdAt || c.importedAt) + '</td><td>' + dateFmt(call && call.happenedAt) + '</td><td>' + dateFmt(c.followUpAt) + '</td><td><button type="button" class="btn btn-secondary" data-crm-action="call" data-id="' + esc(c.id) + '">Log call</button></td></tr>'; }).join("") +
     '</tbody></table></div>';
-}
-function leadList() {
-  const rows = leads();
-  return head("LEAD MANAGEMENT", "All Leads", "Search and manage the full lead database.", '<button class="btn btn-secondary" data-crm-action="import">⇧ Import CSV / Excel</button><button class="btn btn-primary" data-crm-action="new-lead">＋ Add lead</button>') + '<input id="crm-import-file" type="file" accept=".csv,.tsv,.xlsx,.xls" hidden>' +
-    '<div class="crm-filter-row"><input id="crm-search" class="input-control" placeholder="Search name, phone, company, lead ID…" value="' + esc(state.query) + '">' + projectSelect() + '<select id="crm-stage-filter" class="select-control"><option value="all">All stages</option>' + STAGES.map(s => '<option ' + (state.stage === s ? "selected" : "") + '>' + esc(s) + '</option>').join("") + '</select><select id="crm-source-filter" class="select-control"><option value="all">All sources</option>' + [...new Set(state.contacts.map(c=>c.source||"Unspecified"))].map(x=>'<option value="'+esc(x)+'" '+(state.sourceFilter===x?"selected":"")+' >'+esc(x)+'</option>').join("") + '</select><select id="crm-assignee-filter" class="select-control"><option value="all">All assignees</option>' + [...new Set(state.contacts.map(c=>c.assignedTo||"Unassigned"))].map(x=>'<option value="'+esc(x)+'" '+(state.assigneeFilter===x?"selected":"")+' >'+esc(x)+'</option>').join("") + '</select><select id="crm-sort" class="select-control" aria-label="Sort leads"><option value="created" ' + (state.sortBy === "created" ? "selected" : "") + '>Sort: Date added</option><option value="updated" ' + (state.sortBy === "updated" ? "selected" : "") + '>Sort: Last updated</option><option value="name" ' + (state.sortBy === "name" ? "selected" : "") + '>Sort: Name</option><option value="followUp" ' + (state.sortBy === "followUp" ? "selected" : "") + '>Sort: Follow-up date</option><option value="phone" ' + (state.sortBy === "phone" ? "selected" : "") + '>Sort: Phone</option><option value="status" ' + (state.sortBy === "status" ? "selected" : "") + '>Sort: Stage</option></select><button class="btn btn-secondary" type="button" data-crm-action="sort-direction">' + (state.sortDirection === "asc" ? "Ascending ↑" : "Descending ↓") + '</button><span class="crm-muted" aria-live="polite">Showing all ' + rows.length + ' matching leads · ' + state.contacts.length + ' loaded</span></div>' + (rows.length ? leadTable(rows) : '<section class="panel crm-empty"><b>No matching leads</b><p>Change the search or filters to see more records.</p></section>');
-}
-function segmentList(kind) {
-  const won = kind === "customers";
-  const rows = leads(true).filter(c => won ? c.status === "Converted / Won" : ["Lost", "Not Interested"].includes(c.status));
-  const title = won ? "Converted Customers" : "Lost Leads";
-  return head("LEAD OUTCOMES", title, won ? "Every successfully converted lead, with its call history available from the lead profile." : "Closed or not-interested leads, retained for future reference.", '<button class="btn btn-secondary" data-crm-nav="leads">All Leads</button>') +
-    '<div class="crm-filter-row">' + projectSelect() + '<span class="crm-muted">' + rows.length + ' records</span></div>' +
-    (rows.length ? leadTable(rows) : '<section class="panel crm-empty"><b>No records in this group</b><p>There are no matching leads yet.</p></section>');
 }
 function pipeline() {
   const rows = leads();
