@@ -25,7 +25,3 @@ jobs:
       - name: Check JavaScript syntax across frontend and Worker
         run: |
           find assets js cloudflare -type f -name '*.js' -print0 | xargs -0 -n1 node --check
-          node --check js/wix/client.js
-          node --check js/wix/member-store.js
-          node --check js/wix/items.js
-          node --check cloudflare/worker.js
