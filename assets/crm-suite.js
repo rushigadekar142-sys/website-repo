@@ -761,10 +761,6 @@ function mount() {
       if (view === state.view) button.setAttribute("aria-current", "page");
       nav.append(button);
     });
-    nav.addEventListener("click", e => {
-      const item = e.target.closest("[data-crm-view]");
-      if (item && nav.contains(item)) setView(item.dataset.crmView);
-    });
   }
   const modal = document.createElement("div"); modal.id = "crm-modal"; modal.className = "crm-modal-backdrop";
   modal.innerHTML = '<section class="crm-modal"><header><div><span class="eyebrow">EKDANT LEADDESK</span><h2 id="crm-modal-title">CRM</h2></div><button class="icon-btn" data-crm-action="close">×</button></header><div id="crm-modal-content"></div></section>';
