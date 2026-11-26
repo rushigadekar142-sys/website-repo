@@ -716,6 +716,13 @@ function mount() {
   const nav = $(".main-nav");
   if (nav) {
     nav.setAttribute("aria-label", "CRM sections");
+    if (!nav.dataset.crmDelegated) {
+      nav.dataset.crmDelegated = "true";
+      nav.addEventListener("click", e => {
+        const button = e.target.closest("[data-crm-view]");
+        if (button && nav.contains(button)) { e.preventDefault(); setView(button.dataset.crmView); }
+      });
+    }
     nav.querySelectorAll(":scope > .nav-item, :scope > .nav-label").forEach(el => { el.style.display = "none"; });
     const group = document.createElement("span"); group.className = "nav-label"; group.textContent = "EKDANT CRM";
     nav.append(group);
