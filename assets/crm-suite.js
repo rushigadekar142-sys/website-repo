@@ -9,7 +9,7 @@ const STAGES = ["New Lead", "Attempted", "Connected", "Interested", "Proposal Se
 const OUTCOMES = ["Interested", "Not Interested", "No Answer", "Busy", "Switch Off", "Wrong Number", "Call Back Later", "Meeting Scheduled", "Converted", "Lost"];
 const $ = (s, root = document) => root.querySelector(s);
 const esc = v => String(v == null ? "" : v).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-const dateFmt = v => v ? new Intl.DateTimeFormat("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(v)) : "—";
+const dateFmt = v => { if (!v) return "—"; const d = new Date(v); return Number.isNaN(d.getTime()) ? "—" : new Intl.DateTimeFormat("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(d); };
 const dayStart = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
 const state = { member: null, projects: [], contacts: [], activities: [], tasks: [], view: "overview", trash: [], query: "", projectId: "", stage: "all", sourceFilter: "all", assigneeFilter: "all", sortBy: "created", sortDirection: "desc" };
 let mounted = false;
@@ -18,10 +18,12 @@ async function allItems(collection) {
   const out = [];
   let skip = 0, page;
   do {
-    page = await queryItems(collection, { limit: 100, skip });
-    out.push(...(page.items || []));
-    skip += 100;
-  } while (page.hasNext);
+    page = await queryItems(collection, { limit: 200, skip });
+    const batch = page.items || [];
+    out.push(...batch);
+    if (!page.hasNext || batch.length === 0) break;
+    skip += batch.length;
+  } while (true);
   return out;
 }
 async function taskApi(path, method = "GET", body) {
