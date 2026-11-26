@@ -73,7 +73,20 @@ export async function refreshMember() {
     }
     // hint true → read the profile (null = profile data missing, still logged in).
     // hint null (ambient) → the member read IS the session check: null = anonymous.
-    const member = await fetchCurrentMember();
+    let member;
+    try {
+        member = await fetchCurrentMember();
+    }
+    catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        if (loggedInHint() === false) {
+            setState({ member: null, loggedIn: false, loading: false, error: "Your Wix session expired. Sign in again." });
+        }
+        else {
+            setState({ loading: false, error: message });
+        }
+        return;
+    }
     setState({ member, loggedIn: hint ?? member !== null, loading: false });
 }
 async function runLogin(action) {
