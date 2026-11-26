@@ -11,7 +11,19 @@ async function who(req,env){
  const m=(await r.json()).member;
  if(!m?.id)return null;
  const row=await env.DB.prepare("SELECT wm.id AS mid,wm.workspace_id,wm.role,wm.status,wm.display_name,w.name AS workspace_name,w.slug AS workspace_slug FROM workspace_members wm JOIN workspaces w ON w.id=wm.workspace_id WHERE wm.wix_member_id=? AND wm.status='active' LIMIT 1").bind(m.id).first();
- return row?{m,...row}: {m,denied:true};
+ if(row)return {m,...row};
+ const email=String(m.loginEmail||"").trim().toLowerCase();
+ if(email){
+  const invite=await env.DB.prepare("SELECT id,workspace_id,role FROM workspace_invites WHERE email=? COLLATE NOCASE AND status='pending' LIMIT 1").bind(email).first();
+  if(invite){
+   const mid=crypto.randomUUID();
+   await env.DB.prepare("INSERT OR IGNORE INTO workspace_members(id,workspace_id,wix_member_id,email,display_name,role,status) VALUES(?,?,?,?,?,?,?)").bind(mid,invite.workspace_id,m.id,email,m.profile?.nickname||"",invite.role,"active").run();
+   await env.DB.prepare("UPDATE workspace_invites SET status='accepted' WHERE id=? AND status='pending'").bind(invite.id).run();
+   const created=await env.DB.prepare("SELECT wm.id AS mid,wm.workspace_id,wm.role,wm.status,wm.display_name,w.name AS workspace_name,w.slug AS workspace_slug FROM workspace_members wm JOIN workspaces w ON w.id=wm.workspace_id WHERE wm.wix_member_id=? AND wm.status='active' LIMIT 1").bind(m.id).first();
+   if(created)return {m,...created};
+  }
+ }
+ return {m,denied:true};
 }
 async function log(env,u,action,type,eid,meta={}){await env.DB.prepare("INSERT INTO audit_logs(id,workspace_id,actor_member_id,action,entity_type,entity_id,metadata_json) VALUES(?,?,?,?,?,?,?)").bind(id(),u.workspace_id,u.mid,action,type,eid||null,JSON.stringify(meta)).run()}
 export default {async fetch(req,env){
