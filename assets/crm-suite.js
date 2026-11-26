@@ -11,7 +11,7 @@ const $ = (s, root = document) => root.querySelector(s);
 const esc = v => String(v == null ? "" : v).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const dateFmt = v => v ? new Intl.DateTimeFormat("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(v)) : "—";
 const dayStart = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
-const state = { member: null, projects: [], contacts: [], activities: [], tasks: [], view: "overview", query: "", projectId: "", stage: "all", sourceFilter: "all", assigneeFilter: "all" };
+const state = { member: null, projects: [], contacts: [], activities: [], tasks: [], view: "overview", trash: [], query: "", projectId: "", stage: "all", sourceFilter: "all", assigneeFilter: "all" };
 let mounted = false;
 
 async function allItems(collection) {
@@ -59,12 +59,13 @@ function leads() {
   return rows;
 }
 async function reload() {
-  const [projects, contacts, activities, taskPage] = await Promise.all([allItems(COL.projects), allItems(COL.contacts), allItems(COL.activity), taskApi("/api/tasks?limit=200")]);
+  const [projects, contacts, activities, taskPage, trashPage] = await Promise.all([allItems(COL.projects), allItems(COL.contacts), allItems(COL.activity), taskApi("/api/tasks?limit=200"), taskApi("/api/trash?limit=200")]);
   state.projects = projects;
   const ids = new Set(allowedProjects().map(p => p._id));
   state.contacts = contacts.filter(c => ids.has(c.projectId)).map(c => ({ ...c, id: c._id, status: c.status || "New Lead" }));
   state.activities = activities.filter(a => ids.has(a.projectId));
   state.tasks = (taskPage.items || []).map(t => ({ ...t, _id: t.id, projectId: t.project_id, contactId: t.contact_id, assignedTo: t.assigned_to, dueAt: t.due_at }));
+   state.trash = trashPage.items || [];
   render();
 }
 function toast(message) {
@@ -297,6 +298,31 @@ function taskView() {
     '<div class="crm-filter-row">' + projectSelect() + '<span class="crm-muted">' + rows.length + ' tasks</span></div>' +
     (rows.length ? '<section class="panel crm-task-list">' + rows.map(t => '<article class="crm-task-row"><div class="crm-task-main"><b>' + esc(t.title || "Untitled task") + '</b><small>' + esc(t.description || "") + '</small><small>' + esc(state.projects.find(p => p._id === t.projectId)?.name || "Project") + ' · ' + esc(t.assignedTo || "Unassigned") + ' · Due ' + dateFmt(t.dueAt) + '</small></div><select data-task-status="' + esc(t._id) + '" aria-label="Task status"><option value="open" ' + (t.status === "open" ? "selected" : "") + '>Open</option><option value="in_progress" ' + (t.status === "in_progress" ? "selected" : "") + '>In progress</option><option value="done" ' + (t.status === "done" ? "selected" : "") + '>Done</option><option value="cancelled" ' + (t.status === "cancelled" ? "selected" : "") + '>Cancelled</option></select></article>').join("") + '</section>' : '<section class="panel"><h3>No tasks yet</h3><p class="crm-muted">Create the first task for a project to track internal work and follow-ups.</p></section>');
 }
+
+function trashView() {
+  const rows = state.trash.filter(c => !state.projectId || c.projectId === state.projectId);
+  return head("RECOVERED RECORDS", "Trash", "Deleted leads are retained safely and can be restored. No permanent deletion is available.", '<span class="crm-muted">' + rows.length + ' items in Trash</span>') +
+    '<div class="crm-filter-row">' + projectSelect() + '</div>' +
+    (rows.length ? '<div class="crm-table-wrap"><table class="crm-table"><thead><tr><th>Lead</th><th>Phone</th><th>Project</th><th>Deleted on</th><th>Action</th></tr></thead><tbody>' +
+      rows.map(c => '<tr><td><b>' + esc(c.businessName || c.contactPerson || "Unnamed lead") + '</b><small>' + esc(c.company || c.city || "") + '</small></td><td>' + esc(c.phone || "—") + '</td><td>' + esc(state.projects.find(p => p._id === c.projectId)?.name || "Project") + '</td><td>' + dateFmt(c.deletedAt) + '</td><td><button class="btn btn-primary" data-crm-action="restore" data-id="' + esc(c._id) + '">Restore</button></td></tr>').join("") +
+      '</tbody></table></div>' : '<section class="panel crm-empty"><b>Trash is empty</b><p>Leads you move to Trash will appear here for recovery.</p></section>');
+}
+async function trashContact(id) {
+  const c = state.contacts.find(x => x.id === id);
+  if (!c) throw new Error("Lead not found.");
+  if (!["owner", "editor"].includes(role(state.projects.find(p => p._id === c.projectId)))) throw new Error("You do not have permission to move this lead to Trash.");
+  if (!window.confirm("Move this lead to Trash? You can restore it later.")) return;
+  await taskApi("/api/contacts/" + encodeURIComponent(id) + "/trash", "POST", {});
+  closeModal(); await reload(); toast("Lead moved to Trash. It can be restored.");
+}
+async function restoreContact(id) {
+  const c = state.trash.find(x => x._id === id);
+  if (!c) throw new Error("Trashed lead not found.");
+  if (!["owner", "editor"].includes(role(state.projects.find(p => p._id === c.projectId)))) throw new Error("You do not have permission to restore this lead.");
+  await taskApi("/api/trash/" + encodeURIComponent(id) + "/restore", "POST", {});
+  await reload(); toast("Lead restored successfully.");
+}
+
 function render() {
   const host = $("#crm-page");
   if (!host) return;
@@ -309,6 +335,7 @@ function render() {
     state.view === "tasks" ? taskView() :
     state.view === "automation" ? automationView() :
     state.view === "team" ? teamView() :
+    state.view === "trash" ? trashView() :
     state.view === "reports" ? reports() : leadList();
   host.querySelectorAll(".crm-stats,.crm-two-col,.crm-table-wrap,.crm-board,.panel").forEach(el => el.classList.add("crm-reveal"));
   const reveal = host.querySelectorAll(".crm-reveal");
@@ -399,7 +426,7 @@ function detailModal(id) {
   const activity = state.activities.filter(a => a.contactId === id).sort((a, b) => new Date(b.happenedAt || 0) - new Date(a.happenedAt || 0)).slice(0, 12);
   openModal(c.businessName || c.contactPerson || "Lead profile", '<div class="crm-detail-grid">' +
     [["Lead ID", c.leadId || c.srNo || id], ["Status", c.status], ["Phone", c.phone], ["WhatsApp", c.whatsapp || c.phone], ["Email", c.email], ["Company", c.company], ["City", c.city || c.area], ["Source", c.source], ["Campaign", c.campaign], ["Assigned to", c.assignedTo], ["Priority", c.priority], ["Follow-up", dateFmt(c.followUpAt)], ["Deal value", c.dealValue ? "₹" + c.dealValue : "—"], ["Payment status", c.paymentStatus], ["Industry", c.industry], ["Website", c.website], ["Tags", c.tags], ["Custom field 1", c.customField1], ["Custom field 2", c.customField2]].map(x => '<div><small>' + x[0] + '</small><b>' + esc(x[1] || "—") + '</b></div>').join("") + '</div>' +
-    '<div class="crm-modal-actions"><a class="btn btn-secondary" href="tel:' + esc(c.phone || "") + '">Call</a>' + (c.email ? '<a class="btn btn-secondary" href="mailto:' + esc(c.email) + '">Email</a>' : "") + (website ? '<a class="btn btn-secondary" target="_blank" rel="noopener noreferrer" href="' + esc(website) + '">Website</a>' : "") + (wa ? '<a class="btn btn-secondary" target="_blank" rel="noopener" href="https://wa.me/' + wa + '">WhatsApp</a>' : "") + '<button class="btn btn-primary" data-crm-action="call" data-id="' + id + '">＋ Log call</button></div>' +
+    '<div class="crm-modal-actions"><a class="btn btn-secondary" href="tel:' + esc(c.phone || "") + '">Call</a>' + (c.email ? '<a class="btn btn-secondary" href="mailto:' + esc(c.email) + '">Email</a>' : "") + (website ? '<a class="btn btn-secondary" target="_blank" rel="noopener noreferrer" href="' + esc(website) + '">Website</a>' : "") + (wa ? '<a class="btn btn-secondary" target="_blank" rel="noopener" href="https://wa.me/' + wa + '">WhatsApp</a>' : "") + '<button class="btn btn-primary" data-crm-action="call" data-id="' + id + '">＋ Log call</button>' + (["owner", "editor"].includes(role(state.projects.find(p => p._id === c.projectId))) ? '<button class="btn btn-secondary" data-crm-action="trash" data-id="' + id + '">Move to Trash</button>' : "") + '</div>' +
     '<section class="crm-history"><b>Activity timeline</b>' + (activity.map(a => '<div><b>' + esc(a.callOutcome || a.newStatus || a.activityType) + '</b><small>' + dateFmt(a.happenedAt) + ' · ' + esc(a.remark || "") + '</small></div>').join("") || '<p>No activity yet.</p>') + '</section>');
 }
 function statusForOutcome(outcome) {
@@ -578,6 +605,8 @@ function click(e) {
     if (a === "manage-access") manageAccess(b.dataset.id);
     if (a === "call") callModal(b.dataset.id);
     if (a === "detail") detailModal(b.dataset.id);
+     if (a === "trash") trashContact(b.dataset.id).catch(err => toast("Could not move lead to Trash: " + err.message));
+     if (a === "restore") restoreContact(b.dataset.id).catch(err => toast("Could not restore lead: " + err.message));
     if (a === "close") closeModal();
     if (a === "export") exportCsv();
   }
@@ -676,7 +705,7 @@ function mount() {
       ["due", "Due Today", "◷"], ["upcoming", "Upcoming", "↗"],
       ["overdue", "Overdue", "!"], ["calls", "Call History", "☎"],
       ["activities", "Activities", "◌"], ["tasks", "Task Manager", "✓"], ["automation", "Automation", "⚙"],
-      ["team", "Team & Access", "♧"], ["reports", "CRM Reports", "▤"]
+      ["team", "Team & Access", "♧"], ["trash", "Trash & Restore", "⌫"], ["reports", "CRM Reports", "▤"]
     ];
     navItems.forEach(([view, label, glyph]) => {
       const button = document.createElement("button");
