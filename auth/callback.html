@@ -8,6 +8,12 @@ try {
   const { data, error: sessionError } = await supabase.auth.getSession();
   if (sessionError) throw sessionError;
   if (!data.session) throw new Error("No active session was returned. Use the verification code from your email or sign in again.");
+  const inviteToken = new URLSearchParams(window.location.search).get("invite") || localStorage.getItem("vistaar-pending-invite");
+  if (inviteToken) {
+    const { error: inviteError } = await supabase.rpc("accept_workspace_invitation", { p_token: inviteToken });
+    if (inviteError) throw inviteError;
+    localStorage.removeItem("vistaar-pending-invite");
+  }
   status.textContent="Account verified. Opening your workspace…";
   window.location.replace("/");
 } catch (e) {
