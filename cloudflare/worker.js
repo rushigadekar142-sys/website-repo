@@ -7,7 +7,7 @@ const H={"Content-Type":"application/json; charset=utf-8","Cache-Control":"no-st
 const GLOBAL_WRITE=new Set(["owner","admin","manager"]);
 const COLLECTIONS={EkdantProjects:"projects",EkdantContacts:"contacts",EkdantActivity:"activities"};
 const CONTACT_FIELDS={leadId:"lead_id",businessName:"business_name",contactPerson:"contact_person",phone:"phone",phoneNormalized:"phone_normalized",whatsapp:"whatsapp",email:"email",company:"company",city:"city",area:"area",address:"address",source:"source",campaign:"campaign",category:"category",industry:"industry",website:"website",status:"status",priority:"priority",assignedTo:"assigned_to",followUpAt:"follow_up_at",dealValue:"deal_value",doNotContact:"do_not_contact"};
-const ACTIVITY_FIELDS={activityType:"activity_type",callOutcome:"call_outcome",oldStatus:"old_status",newStatus:"new_status",actorEmail:"actor_email",actorName:"actor_name",happenedAt:"happened_at",durationSeconds:"duration_seconds",remark:"remark"};
+const ACTIVITY_FIELDS={activityType:"activity_type",callOutcome:"call_outcome",oldStatus:"old_status",newStatus:"new_status",actorMemberId:"actor_member_id",actorEmail:"actor_email",actorName:"actor_name",happenedAt:"happened_at",durationSeconds:"duration_seconds",callDurationSeconds:"duration_seconds",remark:"remark"};
 const id=()=>crypto.randomUUID();
 const now=()=>new Date().toISOString();
 const out=(d,s=200,h={})=>new Response(JSON.stringify(d),{status:s,headers:{...H,...h}});
@@ -27,7 +27,7 @@ function dataFor(kind,row){
  const base={...d,_id:row.wix_id||row.id,_createdDate:d._createdDate||row.created_at,_updatedDate:d._updatedDate||row.updated_at};
  if(kind==="projects")return {...base,name:row.name||d.name||"",description:row.description??d.description??"",memberEmails:parse(row.member_emails_json,d.memberEmails||[])||[]};
  if(kind==="contacts")return {...base,projectId:row.project_id,businessName:row.business_name??d.businessName??"",contactPerson:row.contact_person??d.contactPerson??"",phone:row.phone??d.phone??"",phoneNormalized:row.phone_normalized??d.phoneNormalized??"",whatsapp:row.whatsapp??d.whatsapp??"",email:row.email??d.email??"",company:row.company??d.company??"",city:row.city??d.city??"",area:row.area??d.area??"",address:row.address??d.address??"",source:row.source??d.source??"",campaign:row.campaign??d.campaign??"",category:row.category??d.category??"",industry:row.industry??d.industry??"",website:row.website??d.website??"",status:row.status??d.status??"New",priority:row.priority??d.priority??"Normal",assignedTo:row.assigned_to??d.assignedTo??"",followUpAt:row.follow_up_at??d.followUpAt??null,dealValue:row.deal_value??d.dealValue??0,doNotContact:!!(row.do_not_contact??d.doNotContact)};
- return {...base,projectId:row.project_id,contactId:row.contact_id||d.contactId||"",activityType:row.activity_type??d.activityType??"",callOutcome:row.call_outcome??d.callOutcome??"",oldStatus:row.old_status??d.oldStatus??"",newStatus:row.new_status??d.newStatus??"",actorEmail:row.actor_email??d.actorEmail??"",actorName:row.actor_name??d.actorName??"",happenedAt:row.happened_at??d.happenedAt??row.created_at, durationSeconds:row.duration_seconds??d.durationSeconds??0,remark:row.remark??d.remark??""};
+ return {...base,projectId:row.project_id,contactId:row.contact_id||d.contactId||"",actorMemberId:row.actor_member_id||d.actorMemberId||"",activityType:row.activity_type??d.activityType??"",callOutcome:row.call_outcome??d.callOutcome??"",oldStatus:row.old_status??d.oldStatus??"",newStatus:row.new_status??d.newStatus??"",actorEmail:row.actor_email??d.actorEmail??"",actorName:row.actor_name??d.actorName??"",happenedAt:row.happened_at??d.happenedAt??row.created_at, durationSeconds:row.duration_seconds??d.durationSeconds??0,remark:row.remark??d.remark??""};
 }
 function projectRole(row,u){
  if(!row)return "none";
@@ -98,7 +98,7 @@ function mapValues(data,map){
   else if(col==="do_not_contact")v=v?1:0;
   else if(col==="duration_seconds")v=Math.max(0,Math.floor(Number(v||0)));
   else if(v!==null&&typeof v!=="number")v=String(v).slice(0,4000);
-  cols.push(col);vals.push(v??null);
+  const existing=cols.indexOf(col);if(existing>=0)vals[existing]=v??null;else{cols.push(col);vals.push(v??null)}
  }
  return {cols,vals};
 }
@@ -148,7 +148,7 @@ async function createCollection(env,u,kind,body){
   const cid=String(d.contactId||"");
   let validContact=null;
   if(cid)validContact=await env.DB.prepare("SELECT id FROM contacts WHERE id=? AND project_id=? AND workspace_id=?").bind(cid,pid,u.workspace_id).first();
-  const mapped=mapValues(d,ACTIVITY_FIELDS),cols=["id","workspace_id","project_id","contact_id",...mapped.cols,"data_json"],vals=[rid,u.workspace_id,pid,validContact?cid:null,...mapped.vals,JSON.stringify(d)];
+  d.actorMemberId=u.mid;const mapped=mapValues(d,ACTIVITY_FIELDS),cols=["id","workspace_id","project_id","contact_id","wix_id",...mapped.cols,"data_json"],vals=[rid,u.workspace_id,pid,validContact?cid:null,rid,...mapped.vals,JSON.stringify(d)];
   await env.DB.prepare("INSERT INTO activities("+cols.join(",")+") VALUES("+cols.map(()=>"?").join(",")+")").bind(...vals).run();
   await log(env,u,"create","activity",rid,{project_id:pid});
   return {item:dataFor("activities",await env.DB.prepare("SELECT * FROM activities WHERE id=?").bind(rid).first()),created:true};
