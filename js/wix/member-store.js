@@ -29,7 +29,8 @@ async function resolveMember(user) {
   if (error) throw error;
   if (!memberships?.length) {
     const first = user.user_metadata?.first_name || user.email?.split("@")[0] || "My";
-    const created = await supabase.rpc("create_workspace", { p_name: first + "'s Workspace" });
+    const workspaceName = user.user_metadata?.workspace_name || (first + "'s Workspace");
+    const created = await supabase.rpc("create_workspace", { p_name: workspaceName });
     if (created.error) throw created.error;
     const refreshed = await supabase.from("workspace_members")
       .select("workspace_id,role,workspaces(id,name,slug)")
@@ -91,7 +92,7 @@ export async function register(email, password, profile = {}) {
   return resultFromAuth(await supabase.auth.signUp({
     email: pendingEmail, password,
     options: {
-      data: { first_name: profile.firstName || "", last_name: profile.lastName || "" },
+      data: { first_name: profile.firstName || "", last_name: profile.lastName || "", workspace_name: profile.workspaceName || "" },
       emailRedirectTo: window.location.origin + "/auth/callback.html"
     }
   }));
