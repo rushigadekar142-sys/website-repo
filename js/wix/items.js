@@ -31,10 +31,25 @@
 // docs: https://dev.wix.com/docs/api-reference/business-solutions/cms/data-items/get-data-item.md
 // docs: https://dev.wix.com/docs/api-reference/business-solutions/cms/data-items/patch-data-item.md
 // docs: https://dev.wix.com/docs/api-reference/business-solutions/cms/data-items/bulk-insert-data-item-references.md
-import { WixApiError, wixRequest } from "./client.js";
+import { WixApiError, accessToken, wixRequest } from "./client.js";
 import { imgRatio, imgSrc } from "./media.js";
 import { DEFAULT_LIMIT, DISTINCT_LIMIT, countBody, distinctBody, patchModifications, queryBody, referencesBody, restHasNext, restWriteData, toItem, toPage, toValues, } from "./items-core.js";
 const media = { imgSrc, imgRatio };
+const CRM_API_BASE = "https://ekdant-leaddesk-api-staging.okaymockup.workers.dev";
+const CRM_COLLECTIONS = new Set(["EkdantProjects", "EkdantContacts", "EkdantActivity"]);
+async function crmRequest(path, { method = "GET", body } = {}) {
+    const token = await accessToken();
+    const res = await fetch(CRM_API_BASE + path, {
+        method,
+        headers: { Authorization: token, "Content-Type": "application/json" },
+        body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    let payload;
+    try { payload = await res.json(); } catch { payload = {}; }
+    if (!res.ok) throw new Error(payload.detail || payload.error || ("CRM API request failed (" + res.status + ")."));
+    return payload;
+}
+
 const notFound = (e) => e instanceof WixApiError && e.status === 404;
 /**
  * Query one page of a collection. An empty result on a PUBLIC collection is a seed permissions bug
@@ -44,6 +59,11 @@ const notFound = (e) => e instanceof WixApiError && e.status === 404;
  */
 export async function queryItems(collectionId, query = {}) {
     const { limit = DEFAULT_LIMIT, skip = 0 } = query;
+    if (CRM_COLLECTIONS.has(collectionId)) {
+        const params = new URLSearchParams({ limit: String(limit), offset: String(skip) });
+        const res = await crmRequest("/api/collections/" + encodeURIComponent(collectionId) + "?" + params.toString());
+        return toPage(res?.items ?? [], !!res?.hasNext, res?.total ?? null, media);
+    }
     const res = await wixRequest("/wix-data/v2/items/query", { body: queryBody(collectionId, query) });
     const items = (res?.dataItems ?? []).map((d) => d.data ?? {});
     return toPage(items, restHasNext(res?.pagingMetadata, skip, limit), res?.pagingMetadata?.total, media);
@@ -102,6 +122,10 @@ export async function distinctValues(collectionId, field, { filters = [], limit 
  * POST /wix-data/v2/items  { dataCollectionId, dataItem: { data } }  → { dataItem: { data } }
  */
 export async function insertItem(collectionId, data, { link = {} } = {}) {
+    if (CRM_COLLECTIONS.has(collectionId)) {
+        const res = await crmRequest("/api/collections/" + encodeURIComponent(collectionId), { method: "POST", body: { data: restWriteData(data) } });
+        return toItem(res?.item ?? {}, media);
+    }
     const res = await wixRequest("/wix-data/v2/items", { body: { dataCollectionId: collectionId, dataItem: { data: restWriteData(data) } } });
     const item = toItem(res?.dataItem?.data ?? {}, media);
     for (const [field, refIds] of Object.entries(link))
@@ -115,6 +139,10 @@ export async function insertItem(collectionId, data, { link = {} } = {}) {
  * PUT /wix-data/v2/items/{id}  { dataCollectionId, dataItem: { id, data } }  → { dataItem: { data } }
  */
 export async function updateItem(collectionId, item) {
+    if (CRM_COLLECTIONS.has(collectionId)) {
+        const res = await crmRequest("/api/collections/" + encodeURIComponent(collectionId) + "/" + encodeURIComponent(item._id), { method: "PATCH", body: { data: restWriteData(item) } });
+        return toItem(res?.item ?? {}, media);
+    }
     const res = await wixRequest(`/wix-data/v2/items/${encodeURIComponent(item._id)}`, {
         method: "PUT",
         body: { dataCollectionId: collectionId, dataItem: { id: item._id, data: restWriteData(item) } },
@@ -126,6 +154,10 @@ export async function updateItem(collectionId, item) {
  * PATCH /wix-data/v2/items/{id}  { dataCollectionId, patch: { dataItemId, fieldModifications: [{ fieldPath, action: "SET_FIELD", setFieldOptions: { value } }] } }
  */
 export async function patchItemFields(collectionId, itemId, fields) {
+    if (CRM_COLLECTIONS.has(collectionId)) {
+        const res = await crmRequest("/api/collections/" + encodeURIComponent(collectionId) + "/" + encodeURIComponent(itemId), { method: "PATCH", body: { data: restWriteData(fields) } });
+        return toItem(res?.item ?? {}, media);
+    }
     const res = await wixRequest(`/wix-data/v2/items/${encodeURIComponent(itemId)}`, {
         method: "PATCH",
         body: { dataCollectionId: collectionId, patch: { dataItemId: itemId, fieldModifications: patchModifications(fields) } },
@@ -137,6 +169,8 @@ export async function patchItemFields(collectionId, itemId, fields) {
  * DELETE /wix-data/v2/items/{id}?dataCollectionId=…  → { dataItem: { data } }
  */
 export async function removeItem(collectionId, itemId) {
+    if (CRM_COLLECTIONS.has(collectionId))
+        throw new Error("CRM records are protected from permanent deletion. Use the Trash workflow instead.");
     try {
         const res = await wixRequest(`/wix-data/v2/items/${encodeURIComponent(itemId)}`, { method: "DELETE", query: { dataCollectionId: collectionId } });
         return res?.dataItem?.data ? toItem(res.dataItem.data, media) : null;
