@@ -59,3 +59,10 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Sortable all-leads table */
+.crm-sort-button{border:0;background:transparent;color:#a9b5c4;padding:3px 0;font:inherit;font-size:inherit;letter-spacing:inherit;text-transform:inherit;white-space:nowrap;cursor:pointer}
+.crm-sort-button:hover,.crm-sort-button:focus-visible{color:var(--teal)}
+.crm-table-wrap{max-width:100%;overscroll-behavior-x:contain}
+.crm-table{min-width:1180px}
+@media(max-width:760px){.crm-filter-row>.input-control{width:100%;min-width:0}.crm-filter-row>.select-control{flex:1;min-width:135px}.crm-table-wrap{-webkit-overflow-scrolling:touch}.crm-head-actions>.btn{flex:1}.crm-muted{line-height:1.5}}
