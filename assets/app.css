@@ -37,3 +37,25 @@
   .main-area{width:100%;min-width:0}
   .crumb{align-items:center}
 }
+
+
+/* Accessibility hardening: visible keyboard focus and reduced-motion support. */
+:where(a,button,input,select,textarea,[tabindex]):focus-visible {
+  outline: 3px solid #8cebd5 !important;
+  outline-offset: 3px;
+  box-shadow: 0 0 0 2px #07130f;
+}
+.crm-mobile-menu-toggle:focus-visible,
+.crm-nav-item:focus-visible,
+.crm-link:focus-visible {
+  outline: 3px solid #8cebd5 !important;
+  outline-offset: 3px;
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
