@@ -5,6 +5,9 @@ export const CRM_MODULES = {
   leads:{title:"Leads",table:"crm_leads",primary:"company",fields:[
     ["first_name","First name","text"],["last_name","Last name","text"],["company","Company","text"],["title","Job title","text"],["email","Email","email"],["phone","Phone","tel"],["source","Lead source","select",["Website","Referral","Social","Phone","Advertisement","Other"]],["status","Status","select",["New","Contacted","Qualified","Unqualified"]],["industry","Industry","text"],["city","City","text"],["state","State","text"],["description","Description","textarea"]
   ],columns:["company","first_name","email","phone","source","status"]},
+  contacts:{title:"Contacts",table:"contacts",primary:"contactPerson",fields:[
+    ["businessName","Business / company","text"],["contactPerson","Contact person","text"],["phone","Phone","tel"],["email","Email","email"],["status","Status","select",["New","Interested","Not Interested","Not Picked","Wrong Number","Customer"]],["source","Source","text"],["city","City","text"],["notes","Notes","textarea"]
+  ],columns:["businessName","contactPerson","phone","email","status","city"]},
   accounts:{title:"Accounts",table:"crm_accounts",primary:"name",fields:[
     ["name","Account name","text"],["account_type","Type","select",["Customer","Prospect","Partner","Reseller","Vendor","Other"]],["industry","Industry","text"],["website","Website","url"],["phone","Phone","tel"],["email","Email","email"],["annual_revenue","Annual revenue (₹)","number"],["employee_count","Employees","number"]
   ],columns:["name","account_type","industry","phone","website"]},
@@ -37,13 +40,13 @@ export const CRM_MODULES = {
   ],columns:["name","type","status","start_date","budget","expected_revenue"]}
 };
 
-const REQUIRED = {leads:"company",accounts:"name",deals:"name",tasks:"subject",events:"title",calls:"subject",notes:"title",products:"name",quotes:"subject",tickets:"subject",campaigns:"name"};
+const REQUIRED = {leads:"company",contacts:"contactPerson",accounts:"name",deals:"name",tasks:"subject",events:"title",calls:"subject",notes:"title",products:"name",quotes:"subject",tickets:"subject",campaigns:"name"};
 const clean = (v) => JSON.parse(JSON.stringify(v,(_k,x)=>x instanceof Date?x.toISOString():x));
 function currentWorkspace(){const m=getMemberState().member;if(!m?.workspaceId||!m?.id)throw new Error("Your workspace session is not ready. Sign in again.");return m;}
 function typedColumns(key,p){
  const common={};
  if(key==="leads")Object.assign(common,{company:p.company||"",first_name:p.first_name||null,last_name:p.last_name||null,email:p.email||null,phone:p.phone||null,source:p.source||null,status:p.status||"New",assigned_to:p.assigned_to||null});
- if(key==="accounts")Object.assign(common,{name:p.name,account_type:p.account_type||null,industry:p.industry||null,website:p.website||null,phone:p.phone||null,email:p.email||null,annual_revenue:p.annual_revenue||null,employee_count:p.employee_count||null,assigned_to:p.assigned_to||null});
+ if(key==="contacts")Object.assign(common,{project_id:p.projectId||null,phone_normalized:String(p.phone||"").replace(/\\D/g,"")||null,email_normalized:String(p.email||"").trim().toLowerCase()||null,assigned_to:p.assigned_to||null});\n if(key==="accounts")Object.assign(common,{name:p.name,account_type:p.account_type||null,industry:p.industry||null,website:p.website||null,phone:p.phone||null,email:p.email||null,annual_revenue:p.annual_revenue||null,employee_count:p.employee_count||null,assigned_to:p.assigned_to||null});
  if(key==="deals")Object.assign(common,{name:p.name,stage:p.stage||"Qualification",amount:Number(p.amount||0),probability:Number(p.probability||0),expected_close_date:p.expected_close_date||null,lead_source:p.lead_source||null,type:p.type||null,lost_reason:p.lost_reason||null,assigned_to:p.assigned_to||null});
  if(key==="tasks")Object.assign(common,{subject:p.subject,status:p.status||"Not Started",priority:p.priority||"Normal",due_at:p.due_at||null,assigned_to:p.assigned_to||null});
  if(key==="events")Object.assign(common,{title:p.title,starts_at:p.starts_at||new Date().toISOString(),ends_at:p.ends_at||null,location:p.location||null,assigned_to:p.assigned_to||null});
