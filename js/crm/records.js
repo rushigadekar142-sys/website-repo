@@ -99,3 +99,9 @@ export async function deleteCrmRecord(key,id){
  const def=CRM_MODULES[key],m=currentWorkspace();if(!def)throw new Error("Unknown CRM module.");
  const {error}=await supabase.from(def.table).delete().eq("id",id).eq("workspace_id",m.workspaceId);if(error)throw error;return true;
 }
+
+export async function convertCrmLead(id,createDeal=false,amount=0){
+ const m=currentWorkspace();
+ const {data,error}=await supabase.rpc("crm_convert_lead",{p_lead_id:id,p_create_deal:createDeal,p_deal_amount:Number(amount||0)});
+ if(error)throw error;return data;
+}
