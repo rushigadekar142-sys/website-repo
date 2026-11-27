@@ -9,7 +9,7 @@ const navGroups=[
  {label:"ACTIVITY",items:[["tasks","Tasks"],["events","Meetings & Events"],["calls","Calls"],["notes","Notes"]]},
  {label:"INVENTORY & REVENUE",items:[["products","Products"],["quotes","Quotes"]]},
  {label:"CUSTOMER SERVICE",items:[["tickets","Support Tickets"]]},
- {label:"MARKETING",items:[["campaigns","Campaigns"]]}
+ {label:"MARKETING",items:[["campaigns","Campaigns"],["emailTemplates","Email Templates"]]},{label:"AUTOMATION & ADMIN",items:[["workflows","Workflow Rules"],["customFields","Custom Fields"],["tags","Tags"],["webforms","Web Forms"],["forecasts","Sales Forecasts"],["territories","Territories"],["approvals","Approval Requests"]]}
 ];
 let active=null,rows=[],search="",editing=null,loading=false;
 function installNav(){
