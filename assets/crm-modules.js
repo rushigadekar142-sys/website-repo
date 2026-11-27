@@ -9,9 +9,9 @@ const inputValue=(type,v)=>{if(!v)return "";if(type==="date")return String(v).sl
 const navGroups=[
  {label:"SALES",items:[["leads","Leads"],["accounts","Accounts"],["deals","Deals"],["contacts","Contacts"]]},
  {label:"ACTIVITY",items:[["tasks","Tasks"],["events","Meetings & Events"],["calls","Calls"],["notes","Notes"]]},
- {label:"INVENTORY & REVENUE",items:[["products","Products"],["quotes","Quotes"]]},
+ {label:"INVENTORY & REVENUE",items:[["products","Products"],["quotes","Quotes"],["quoteItems","Quote Line Items"]]},
  {label:"CUSTOMER SERVICE",items:[["tickets","Support Tickets"]]},
- {label:"MARKETING",items:[["campaigns","Campaigns"],["emailTemplates","Email Templates"]]},{label:"AUTOMATION & ADMIN",items:[["workflows","Workflow Rules"],["customFields","Custom Fields"],["tags","Tags"],["webforms","Web Forms"],["forecasts","Sales Forecasts"],["territories","Territories"],["approvals","Approval Requests"]]}
+ {label:"MARKETING",items:[["campaigns","Campaigns"],["emailTemplates","Email Templates"]]},{label:"AUTOMATION & ADMIN",items:[["workflows","Workflow Rules"],["customFields","Custom Fields"],["tags","Tags"],["webforms","Web Forms"],["forecasts","Sales Forecasts"],["territories","Territories"],["approvals","Approval Requests"],["pipelines","Sales Pipelines"],["pipelineStages","Pipeline Stages"]]}
 ];
 let active=null,rows=[],search="",editing=null,loading=false,importPreview=null;
 function installNav(){
