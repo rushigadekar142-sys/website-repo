@@ -40,7 +40,7 @@ export const CRM_MODULES = {
   ],columns:["name","type","status","start_date","budget","expected_revenue"]}
 };
 
-const REQUIRED = {leads:"company",contacts:"contactPerson",accounts:"name",deals:"name",tasks:"subject",events:"title",calls:"subject",notes:"title",products:"name",quotes:"subject",tickets:"subject",campaigns:"name"};
+const REQUIRED = {leads:"company",contacts:"contactPerson",accounts:"name",deals:"name",tasks:"subject",events:"title",calls:"subject",notes:"title",products:"name",quotes:"subject",tickets:"subject",campaigns:"name",emailTemplates:"name",workflows:"name",customFields:"label",tags:"name",webforms:"name",forecasts:"period_start",territories:"name",approvals:"record_id"};
 const clean = (v) => JSON.parse(JSON.stringify(v,(_k,x)=>x instanceof Date?x.toISOString():x));
 function currentWorkspace(){const m=getMemberState().member;if(!m?.workspaceId||!m?.id)throw new Error("Your workspace session is not ready. Sign in again.");return m;}
 function typedColumns(key,p){
@@ -57,6 +57,14 @@ function typedColumns(key,p){
  if(key==="quotes")Object.assign(common,{subject:p.subject,quote_number:p.quote_number||null,status:p.status||"Draft",issue_date:p.issue_date||new Date().toISOString().slice(0,10),expiry_date:p.expiry_date||null,subtotal:Number(p.subtotal||0),discount:Number(p.discount||0),tax_total:Number(p.tax_total||0),total:Number(p.total||0),currency:p.currency||"INR",terms:p.terms||null});
  if(key==="tickets")Object.assign(common,{subject:p.subject,ticket_number:p.ticket_number||null,status:p.status||"Open",priority:p.priority||"Normal",channel:p.channel||null,due_at:p.due_at||null,description:p.description||null,assigned_to:p.assigned_to||null});
  if(key==="campaigns")Object.assign(common,{name:p.name,type:p.type||null,status:p.status||"Draft",start_date:p.start_date||null,end_date:p.end_date||null,budget:Number(p.budget||0),actual_cost:Number(p.actual_cost||0),expected_revenue:Number(p.expected_revenue||0),description:p.description||null});
+ if(key==="emailTemplates")Object.assign(common,{name:p.name,subject:p.subject,category:p.category||null,body_html:p.body_html||"",body_text:p.body_text||"",is_active:p.is_active!=="false"});
+ if(key==="workflows")Object.assign(common,{name:p.name,module:p.module||"leads",trigger_type:p.trigger_type||"manual",description:p.description||null,is_active:false,trigger_config:{},conditions:[],actions:[]});
+ if(key==="customFields")Object.assign(common,{module:p.module||"leads",field_key:p.field_key,label:p.label,field_type:p.field_type||"text",is_required:p.is_required==="true",is_active:p.is_active!=="false"});
+ if(key==="tags")Object.assign(common,{name:p.name,color:p.color||"#64748b"});
+ if(key==="webforms")Object.assign(common,{name:p.name,module:p.module||"leads",success_message:p.success_message||null,is_active:false,fields:[]});
+ if(key==="forecasts")Object.assign(common,{period_start:p.period_start,period_end:p.period_end,target_amount:Number(p.target_amount||0),pipeline_amount:Number(p.pipeline_amount||0),committed_amount:Number(p.committed_amount||0),closed_amount:Number(p.closed_amount||0),notes:p.notes||null});
+ if(key==="territories")Object.assign(common,{name:p.name,description:p.description||null,rules:{}});
+ if(key==="approvals")Object.assign(common,{module:p.module||"deals",record_id:p.record_id,status:p.status||"Pending",reason:p.reason||null,decision_note:p.decision_note||null,approver_id:null,decided_at:null});
  return common;
 }
 function fromRow(key,row){return {...(row.data||{}),...row,id:row.id,_createdDate:row.created_at,_updatedDate:row.updated_at||row.created_at};}
