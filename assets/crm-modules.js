@@ -93,10 +93,10 @@ function showImportPreview(){
  document.body.append(wrap);
 }
 async function confirmImport(button){
- if(!importPreview)return;const batch=importPreview.fresh;button.disabled=true;button.textContent="Importing…";let saved=0,failed=0;
+ if(!importPreview)return;const batch=importPreview.fresh,duplicateCount=importPreview.duplicates;button.disabled=true;button.textContent="Importing…";let saved=0,failed=0;
  for(let i=0;i<batch.length;i++){try{await createCrmRecord(active,batch[i]);saved++;}catch(e){failed++;}}
  $("#crm-import-error").textContent=saved+" imported · "+failed+" failed";
- if(saved){await load(active);$("#crm-import-dialog")?.remove();importPreview=null;alert("Import finished: "+saved+" imported, "+failed+" failed. "+(importPreview?.duplicates||0)+" duplicates skipped.");}
+ if(saved){await load(active);$("#crm-import-dialog")?.remove();importPreview=null;alert("Import finished: "+saved+" imported, "+failed+" failed. "+duplicateCount+" duplicates skipped.");}
  else{button.disabled=false;button.textContent="Retry import";alert("No records were imported. Check required fields and workspace permissions.");}
 }
 
