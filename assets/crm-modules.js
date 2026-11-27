@@ -13,7 +13,7 @@ const navGroups=[
  {label:"CUSTOMER SERVICE",items:[["tickets","Support Tickets"]]},
  {label:"MARKETING",items:[["campaigns","Campaigns"],["emailTemplates","Email Templates"]]},{label:"AUTOMATION & ADMIN",items:[["workflows","Workflow Rules"],["customFields","Custom Fields"],["tags","Tags"],["webforms","Web Forms"],["forecasts","Sales Forecasts"],["territories","Territories"],["approvals","Approval Requests"]]}
 ];
-let active=null,rows=[],search="",editing=null,loading=false;
+let active=null,rows=[],search="",editing=null,loading=false,importPreview=null;
 function installNav(){
  const nav=$(".main-nav");if(!nav||nav.dataset.crmInstalled)return;nav.dataset.crmInstalled="1";
  navGroups.forEach(g=>{const label=document.createElement("span");label.className="nav-label";label.textContent=g.label;nav.append(label);
@@ -41,7 +41,7 @@ function render(){
  const def=CRM_MODULES[active];if(!def)return;const target=$("#page-content");if(!target)return;
  const filtered=rows.filter(r=>!search||Object.values(r).some(v=>String(v??"").toLowerCase().includes(search.toLowerCase())));
  const columns=def.columns;const visible=filtered.slice(0,250);
- target.innerHTML='<div class="page-head"><div><span class="eyebrow">VISTAAR CRM / '+esc(def.title.toUpperCase())+'</span><h1>'+esc(def.title)+'</h1><p>Manage, search, update and track every '+esc(def.title.toLowerCase().replace(/s$/,""))+' in your workspace.</p></div><div class="head-actions"><button class="btn btn-secondary" data-crm-action="refresh">↻ Refresh</button><button class="btn btn-primary" data-crm-action="new">＋ New '+esc(def.title.replace(/s$/,""))+'</button></div></div><div class="crm-module-stats"><div class="crm-module-stat"><small>Total records</small><strong>'+rows.length+'</strong></div><div class="crm-module-stat"><small>Showing</small><strong>'+visible.length+'</strong></div><div class="crm-module-stat"><small>Workspace</small><strong>Private</strong></div></div><div class="panel crm-module-panel"><div class="crm-module-toolbar"><input id="crm-module-search" type="search" placeholder="Search '+esc(def.title.toLowerCase())+'…" value="'+esc(search)+'"><span>'+filtered.length+' record(s)</span></div><div class="table-wrap"><table class="crm-module-table"><thead><tr>'+columns.map(c=>'<th>'+esc(def.fields.find(f=>f[0]===c)?.[1]||c.replace(/_/g," "))+'</th>').join("")+'<th>Created</th><th></th></tr></thead><tbody>'+visible.map(r=>'<tr>'+columns.map(c=>'<td>'+cell(c,r[c])+'</td>').join("")+'<td>'+date(r.created_at)+'</td><td class="crm-module-actions"><button data-crm-action="edit" data-id="'+esc(r.id)+'">Edit</button>'+(active==="leads"&&!r.converted_at?'<button data-crm-action="convert" data-id="'+esc(r.id)+'">Convert</button>':"")+'<button class="danger" data-crm-action="delete" data-id="'+esc(r.id)+'">Delete</button></td></tr>').join("")+'</tbody></table></div>'+(visible.length? "":'<div class="crm-module-empty"><strong>No records found</strong><p>Create your first '+esc(def.title.toLowerCase().replace(/s$/,""))+' or change your search.</p></div>')+(filtered.length>250?'<div class="crm-module-foot">Showing first 250 results. Narrow your search to find specific records.</div>':"")+'</div>';
+ target.innerHTML='<div class="page-head"><div><span class="eyebrow">VISTAAR CRM / '+esc(def.title.toUpperCase())+'</span><h1>'+esc(def.title)+'</h1><p>Manage, search, update and track every '+esc(def.title.toLowerCase().replace(/s$/,""))+' in your workspace.</p></div><div class="head-actions"><button class="btn btn-secondary" data-crm-action="refresh">↻ Refresh</button><button class="btn btn-secondary" data-crm-action="export">⇩ Export</button><button class="btn btn-secondary" data-crm-action="import">⇧ Import</button><button class="btn btn-primary" data-crm-action="new">＋ New '+esc(def.title.replace(/s$/,""))+'</button></div></div><div class="crm-module-stats"><div class="crm-module-stat"><small>Total records</small><strong>'+rows.length+'</strong></div><div class="crm-module-stat"><small>Showing</small><strong>'+visible.length+'</strong></div><div class="crm-module-stat"><small>Workspace</small><strong>Private</strong></div></div><div class="panel crm-module-panel"><div class="crm-module-toolbar"><input id="crm-module-search" type="search" placeholder="Search '+esc(def.title.toLowerCase())+'…" value="'+esc(search)+'"><span>'+filtered.length+' record(s)</span></div><div class="table-wrap"><table class="crm-module-table"><thead><tr>'+columns.map(c=>'<th>'+esc(def.fields.find(f=>f[0]===c)?.[1]||c.replace(/_/g," "))+'</th>').join("")+'<th>Created</th><th></th></tr></thead><tbody>'+visible.map(r=>'<tr>'+columns.map(c=>'<td>'+cell(c,r[c])+'</td>').join("")+'<td>'+date(r.created_at)+'</td><td class="crm-module-actions"><button data-crm-action="edit" data-id="'+esc(r.id)+'">Edit</button>'+(active==="leads"&&!r.converted_at?'<button data-crm-action="convert" data-id="'+esc(r.id)+'">Convert</button>':"")+'<button class="danger" data-crm-action="delete" data-id="'+esc(r.id)+'">Delete</button></td></tr>').join("")+'</tbody></table></div>'+(visible.length? "":'<div class="crm-module-empty"><strong>No records found</strong><p>Create your first '+esc(def.title.toLowerCase().replace(/s$/,""))+' or change your search.</p></div>')+(filtered.length>250?'<div class="crm-module-foot">Showing first 250 results. Narrow your search to find specific records.</div>':"")+'</div>';
 }
 function cell(k,v){if(v===null||v===undefined||v==="")return '<span class="muted">—</span>';if(k==="amount"||k==="total"||k==="budget"||k==="actual_cost"||k==="expected_revenue"||k==="unit_price"||k==="annual_revenue")return esc(money(v));if(k.includes("date")||k.endsWith("_at"))return esc(date(v));if(k==="status"||k==="stage"||k==="priority"||k==="outcome")return '<span class="crm-pill">'+esc(v)+'</span>';return esc(v);}
 function formHtml(record){
@@ -49,6 +49,57 @@ function formHtml(record){
 }
 function openForm(record){editing=record||null;const wrap=document.createElement("div");wrap.innerHTML=formHtml(record);document.body.append(wrap.firstElementChild);}
 function closeForm(){$("#crm-dialog")?.remove();editing=null;}
+function csvEscape(v){const x=String(v??"");return /[",\\n]/.test(x)?'"'+x.replace(/"/g,'""')+'"':x;}
+function exportModule(){
+ const def=CRM_MODULES[active],keys=def.fields.map(f=>f[0]),header=keys.join(",");
+ const lines=rows.map(r=>keys.map(k=>csvEscape(r[k])).join(","));
+ const blob=new Blob(["\\ufeff"+[header,...lines].join("\\r\\n")],{type:"text/csv;charset=utf-8"});
+ const url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download="vistaar-"+active+"-"+new Date().toISOString().slice(0,10)+".csv";a.click();URL.revokeObjectURL(url);
+}
+function normalizeHeader(v){return String(v||"").toLowerCase().replace(/[^a-z0-9]/g,"");}
+function mapImportRow(row){
+ const def=CRM_MODULES[active],lookup=new Map();
+ def.fields.forEach(([key,label])=>{lookup.set(normalizeHeader(key),key);lookup.set(normalizeHeader(label),key);});
+ const aliases={firstname:"first_name",lastname:"last_name",companyname:"company",business:"businessName",businessname:"businessName",contactname:"contactPerson",contactperson:"contactPerson",mobile:"phone",mobilenumber:"phone",phonenumber:"phone",emailaddress:"email",leadstatus:"status",leadsource:"source",dealvalue:"amount",expectedrevenue:"expected_revenue",duedate:"due_at",taskname:"subject",accountname:"name",productname:"name"};
+ const out={};for(const [header,value] of Object.entries(row)){const normalized=normalizeHeader(header),key=lookup.get(normalized)||aliases[normalized];if(key&&value!==""&&value!==null&&value!==undefined)out[key]=value;}
+ for(const f of def.fields){if(f[2]==="number"&&out[f[0]]!==undefined)out[f[0]]=Number(String(out[f[0]]).replace(/[,₹ ]/g,""))||0;}
+ return out;
+}
+function importKey(r){
+ for(const k of ["email","phone","sku","quote_number","ticket_number"]){if(r[k])return k+":"+String(r[k]).replace(/[^a-z0-9]/gi,"").toLowerCase();}
+ if(active==="accounts"&&r.name)return "name:"+String(r.name).trim().toLowerCase();
+ if(active==="products"&&r.name)return "name:"+String(r.name).trim().toLowerCase();
+ return "";
+}
+async function chooseImport(){
+ const input=document.createElement("input");input.type="file";input.accept=".csv,.xlsx,.xls";input.onchange=async()=>{
+  const file=input.files?.[0];if(!file)return;
+  try{
+   let raw=[];
+   if(window.XLSX){const workbook=XLSX.read(await file.arrayBuffer(),{type:"array"});raw=XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]],{defval:""});}
+   else if(file.name.toLowerCase().endsWith(".csv")){const text=await file.text();const lines=text.split(/\\r?\\n/).filter(Boolean);const parseLine=line=>{const a=[];let v="",q=false;for(let i=0;i<line.length;i++){const c=line[i];if(c==='"'&&line[i+1]==='"'){v+='"';i++;}else if(c==='"')q=!q;else if(c===","&&!q){a.push(v);v="";}else v+=c;}a.push(v);return a;};const h=parseLine(lines.shift()||"");raw=lines.map(line=>Object.fromEntries(parseLine(line).map((v,i)=>[h[i]||("Column "+i),v])));}
+   else throw new Error("Excel reader is unavailable. Upload a CSV file.");
+   const mapped=raw.map(mapImportRow).filter(r=>Object.values(r).some(v=>String(v??"").trim()));
+   const seen=new Set();let duplicates=0;const fresh=[];
+   mapped.forEach(r=>{const k=importKey(r);if((k&&seen.has(k))||(k&&rows.some(old=>importKey(old)===k))){duplicates++;return;}if(k)seen.add(k);fresh.push(r);});
+   importPreview={fresh,duplicates,total:mapped.length};showImportPreview();
+  }catch(err){alert("Import could not be read: "+(err.message||err));}
+ };input.click();
+}
+function showImportPreview(){
+ const p=importPreview;if(!p)return;const def=CRM_MODULES[active],sample=p.fresh.slice(0,5),keys=def.columns;
+ const wrap=document.createElement("div");wrap.className="crm-dialog-backdrop";wrap.id="crm-import-dialog";
+ wrap.innerHTML='<section class="crm-dialog"><div class="crm-dialog-head"><div><span class="eyebrow">DATA IMPORT</span><h2>Import '+esc(def.title)+'</h2></div><button class="icon-btn" data-crm-action="import-close">×</button></div><p class="crm-import-summary">Detected <b>'+p.total+'</b> row(s). <b>'+p.fresh.length+'</b> ready to import; <b>'+p.duplicates+'</b> duplicate(s) will be skipped.</p><div class="table-wrap"><table class="crm-module-table"><thead><tr>'+keys.map(k=>'<th>'+esc(def.fields.find(f=>f[0]===k)?.[1]||k)+'</th>').join("")+'</tr></thead><tbody>'+sample.map(r=>'<tr>'+keys.map(k=>'<td>'+esc(r[k]??"—")+'</td>').join("")+'</tr>').join("")+'</tbody></table></div><p class="crm-import-foot">Columns are matched automatically using field names and common header labels. Only fields recognized for this module will be imported.</p><div class="crm-dialog-foot"><span class="crm-form-error" id="crm-import-error"></span><button class="btn btn-secondary" data-crm-action="import-close">Cancel</button><button class="btn btn-primary" data-crm-action="import-confirm" '+(!p.fresh.length?"disabled":"")+'>Import '+p.fresh.length+' record(s)</button></div></section>';
+ document.body.append(wrap);
+}
+async function confirmImport(button){
+ if(!importPreview)return;const batch=importPreview.fresh;button.disabled=true;button.textContent="Importing…";let saved=0,failed=0;
+ for(let i=0;i<batch.length;i++){try{await createCrmRecord(active,batch[i]);saved++;}catch(e){failed++;}}
+ $("#crm-import-error").textContent=saved+" imported · "+failed+" failed";
+ if(saved){await load(active);$("#crm-import-dialog")?.remove();importPreview=null;alert("Import finished: "+saved+" imported, "+failed+" failed. "+(importPreview?.duplicates||0)+" duplicates skipped.");}
+ else{button.disabled=false;button.textContent="Retry import";alert("No records were imported. Check required fields and workspace permissions.");}
+}
+
 async function load(key){active=key;search="";document.querySelectorAll(".nav-item").forEach(b=>b.classList.toggle("active",b.dataset.crmModule===key));loading=true;$("#page-content").innerHTML='<div class="crm-module-loading">Loading '+esc(CRM_MODULES[key].title)+'…</div>';try{rows=await listCrmRecords(key);render()}catch(e){$("#page-content").innerHTML='<div class="notice">Could not load '+esc(CRM_MODULES[key].title)+': '+esc(e.message||e)+'</div>';}finally{loading=false;}}
 document.addEventListener("click",async e=>{
  const standardNav=e.target.closest(".nav-item[data-view]");if(standardNav){active=null;if(standardNav.dataset.view==="overview")loadDashboard();return;}
@@ -57,6 +108,10 @@ document.addEventListener("click",async e=>{
  const b=e.target.closest("[data-crm-action]");if(!b)return;const action=b.dataset.crmAction;
  if(action==="close"){closeForm();return;}if(action==="new"){openForm(null);return;}
  if(action==="refresh"){load(active);return;}
+ if(action==="import"){chooseImport();return;}
+ if(action==="export"){exportModule();return;}
+ if(action==="import-close"){$("#crm-import-dialog")?.remove();importPreview=null;return;}
+ if(action==="import-confirm"){confirmImport(b);return;}
  if(action==="edit"){const r=rows.find(x=>x.id===b.dataset.id);if(r)openForm(r);return;}
  if(action==="convert"){const r=rows.find(x=>x.id===b.dataset.id);if(!r)return;const makeDeal=confirm("Create a Deal during conversion as well?");let amount=0;if(makeDeal){const value=prompt("Enter expected deal amount in INR (optional):","0");if(value===null)return;amount=Number(value)||0;}b.disabled=true;try{await convertCrmLead(r.id,makeDeal,amount);await load("leads");}catch(err){alert(err.message||"Lead conversion failed.");b.disabled=false;}return;}
  if(action==="delete"){const r=rows.find(x=>x.id===b.dataset.id);if(!r||!confirm("Delete this record? This cannot be undone."))return;b.disabled=true;try{await deleteCrmRecord(active,r.id);rows=rows.filter(x=>x.id!==r.id);render()}catch(err){alert(err.message||"Delete failed");b.disabled=false}return;}
