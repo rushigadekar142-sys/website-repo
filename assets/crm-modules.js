@@ -1,4 +1,5 @@
 import { CRM_MODULES, listCrmRecords, createCrmRecord, updateCrmRecord, deleteCrmRecord, convertCrmLead } from "/js/crm/records.js";
+import { getMemberState, subscribeMember } from "/js/wix/member-store.js";
 
 const $=s=>document.querySelector(s);
 const esc=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -18,6 +19,24 @@ function installNav(){
  navGroups.forEach(g=>{const label=document.createElement("span");label.className="nav-label";label.textContent=g.label;nav.append(label);
   g.items.forEach(([key,name])=>{const b=document.createElement("button");b.className="nav-item crm-module-nav";b.type="button";b.dataset.crmModule=key;b.innerHTML='<span class="nav-ico">◈</span>'+name;nav.append(b);});});
 }
+let dashboardWorkspace="";
+async function loadDashboard(){
+ const member=getMemberState().member;if(!member?.workspaceId)return;active=null;dashboardWorkspace=member.workspaceId;
+ document.querySelectorAll(".nav-item").forEach(b=>b.classList.toggle("active",b.dataset.view==="overview"));
+ const target=$("#page-content");if(!target)return;target.innerHTML='<div class="crm-module-loading">Building your CRM dashboard…</div>';
+ try{
+  const [leads,contacts,accounts,deals,tasks,tickets,campaigns]=await Promise.all(["leads","contacts","accounts","deals","tasks","tickets","campaigns"].map(k=>listCrmRecords(k)));
+  const openDeals=deals.filter(d=>!["Closed Won","Closed Lost"].includes(d.stage));
+  const wonDeals=deals.filter(d=>d.stage==="Closed Won");
+  const pipeline=openDeals.reduce((a,d)=>a+Number(d.amount||0),0),won=wonDeals.reduce((a,d)=>a+Number(d.amount||0),0);
+  const overdue=tasks.filter(t=>t.due_at&&new Date(t.due_at)<new Date()&&t.status!=="Completed");
+  const today=new Date().toISOString().slice(0,10);
+  const dueToday=tasks.filter(t=>t.due_at&&String(t.due_at).slice(0,10)===today&&t.status!=="Completed");
+  const leadCounts=["New","Contacted","Qualified","Unqualified"].map(status=>({status,count:leads.filter(x=>(x.status||"New")===status).length}));
+  const max=Math.max(1,...leadCounts.map(x=>x.count));
+  target.innerHTML='<div class="page-head"><div><span class="eyebrow">VISTAAR CRM / WORKSPACE</span><h1>Overview</h1><p>Your sales, customer and service activity in one workspace.</p></div><div class="head-actions"><button class="btn btn-secondary" data-crm-dashboard="refresh">↻ Refresh</button><button class="btn btn-primary" data-crm-dashboard="lead">＋ Add lead</button></div></div><div class="crm-dashboard-grid"><div class="crm-dashboard-card"><small>Total leads</small><strong>'+leads.length+'</strong><span>Prospects in your workspace</span></div><div class="crm-dashboard-card"><small>Contacts</small><strong>'+contacts.length+'</strong><span>People you are managing</span></div><div class="crm-dashboard-card"><small>Accounts</small><strong>'+accounts.length+'</strong><span>Companies and organizations</span></div><div class="crm-dashboard-card"><small>Open pipeline</small><strong>'+esc(money(pipeline))+'</strong><span>'+openDeals.length+' open deal(s)</span></div><div class="crm-dashboard-card"><small>Closed won</small><strong>'+esc(money(won))+'</strong><span>'+wonDeals.length+' won deal(s)</span></div><div class="crm-dashboard-card"><small>Overdue tasks</small><strong>'+overdue.length+'</strong><span>'+dueToday.length+' due today</span></div></div><div class="crm-dashboard-panels"><section class="panel crm-dashboard-panel"><div class="crm-dashboard-title"><h3>Lead pipeline</h3><button data-crm-dashboard="open-leads">View leads →</button></div>'+leadCounts.map(x=>'<div class="crm-bar-row"><span>'+esc(x.status)+'</span><div><i style="width:'+Math.round(x.count/max*100)+'%"></i></div><b>'+x.count+'</b></div>').join("")+'</section><section class="panel crm-dashboard-panel"><div class="crm-dashboard-title"><h3>Work to follow up</h3><button data-crm-dashboard="open-tasks">View tasks →</button></div><div class="crm-dashboard-task"><b>'+overdue.length+'</b><span>Overdue tasks</span></div><div class="crm-dashboard-task"><b>'+dueToday.length+'</b><span>Due today</span></div><div class="crm-dashboard-task"><b>'+tickets.filter(t=>!["Resolved","Closed"].includes(t.status)).length+'</b><span>Open support tickets</span></div><div class="crm-dashboard-task"><b>'+campaigns.filter(c=>c.status==="Active").length+'</b><span>Active campaigns</span></div></section></div>';
+ }catch(e){target.innerHTML='<div class="notice">Dashboard could not load: '+esc(e.message||e)+'</div>';}
+}
 function render(){
  const def=CRM_MODULES[active];if(!def)return;const target=$("#page-content");if(!target)return;
  const filtered=rows.filter(r=>!search||Object.values(r).some(v=>String(v??"").toLowerCase().includes(search.toLowerCase())));
@@ -32,7 +51,9 @@ function openForm(record){editing=record||null;const wrap=document.createElement
 function closeForm(){$("#crm-dialog")?.remove();editing=null;}
 async function load(key){active=key;search="";document.querySelectorAll(".nav-item").forEach(b=>b.classList.toggle("active",b.dataset.crmModule===key));loading=true;$("#page-content").innerHTML='<div class="crm-module-loading">Loading '+esc(CRM_MODULES[key].title)+'…</div>';try{rows=await listCrmRecords(key);render()}catch(e){$("#page-content").innerHTML='<div class="notice">Could not load '+esc(CRM_MODULES[key].title)+': '+esc(e.message||e)+'</div>';}finally{loading=false;}}
 document.addEventListener("click",async e=>{
+ const standardNav=e.target.closest(".nav-item[data-view]");if(standardNav){active=null;if(standardNav.dataset.view==="overview")loadDashboard();return;}
  const nav=e.target.closest("[data-crm-module]");if(nav){e.preventDefault();load(nav.dataset.crmModule);return;}
+ const dash=e.target.closest("[data-crm-dashboard]");if(dash){const a=dash.dataset.crmDashboard;if(a==="refresh")loadDashboard();if(a==="lead"){active="leads";load("leads").then(()=>openForm(null));}if(a==="open-leads")load("leads");if(a==="open-tasks")load("tasks");return;}
  const b=e.target.closest("[data-crm-action]");if(!b)return;const action=b.dataset.crmAction;
  if(action==="close"){closeForm();return;}if(action==="new"){openForm(null);return;}
  if(action==="refresh"){load(active);return;}
@@ -48,3 +69,7 @@ document.addEventListener("submit",async e=>{
  catch(err){$("#crm-form-error").textContent=err.message||"Could not save record.";button.disabled=false;button.textContent=editing?"Save changes":"Create record";}
 });
 document.addEventListener("DOMContentLoaded",installNav);installNav();
+
+const initialMember=getMemberState();
+if(initialMember.loggedIn&&initialMember.member?.workspaceId)loadDashboard();
+else subscribeMember(next=>{if(next.loggedIn&&next.member?.workspaceId&&dashboardWorkspace!==next.member.workspaceId&&!active)loadDashboard();});
