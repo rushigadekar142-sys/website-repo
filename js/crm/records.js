@@ -84,14 +84,14 @@ export async function listCrmRecords(key,{limit=500}={}){
 }
 export async function createCrmRecord(key,values){
  const def=CRM_MODULES[key],m=currentWorkspace();if(!def)throw new Error("Unknown CRM module.");
- const payload=clean(values||{});const required=REQUIRED[key];if(required&&!String(payload[required]||"").trim())throw new Error(def.fields.find(f=>f[0]===required)?.[1]+" is required.");
+ const payload=clean(values||{});const required=REQUIRED[key];if(required&&!String(payload[required]||"").trim())throw new Error(def.fields.find(f=>f[0]===required)?.[1]+" is required.");if(key==="customFields"&&!String(payload.field_key||"").trim())throw new Error("Field key is required.");if(key==="forecasts"&&!String(payload.period_end||"").trim())throw new Error("Period end is required.");
  const row={workspace_id:m.workspaceId,created_by:m.id,data:payload,...typedColumns(key,payload)};
  const {data,error}=await supabase.from(def.table).insert(row).select("*").single();if(error)throw error;return fromRow(key,data);
 }
 export async function updateCrmRecord(key,id,values){
  const def=CRM_MODULES[key],m=currentWorkspace();if(!def)throw new Error("Unknown CRM module.");
  const {data:old,error:readError}=await supabase.from(def.table).select("*").eq("id",id).eq("workspace_id",m.workspaceId).single();if(readError)throw readError;
- const payload={...(old.data||{}),...clean(values||{})};const required=REQUIRED[key];if(required&&!String(payload[required]||"").trim())throw new Error("Required field is missing.");
+ const payload={...(old.data||{}),...clean(values||{})};const required=REQUIRED[key];if(required&&!String(payload[required]||"").trim())throw new Error("Required field is missing.");if(key==="customFields"&&!String(payload.field_key||"").trim())throw new Error("Field key is required.");if(key==="forecasts"&&!String(payload.period_end||"").trim())throw new Error("Period end is required.");
  const patch={data:payload,updated_at:new Date().toISOString(),...typedColumns(key,payload)};
  const {data,error}=await supabase.from(def.table).update(patch).eq("id",id).eq("workspace_id",m.workspaceId).select("*").single();if(error)throw error;return fromRow(key,data);
 }
