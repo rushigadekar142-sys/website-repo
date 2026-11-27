@@ -45,7 +45,19 @@ function render(){
 }
 function cell(k,v){if(v===null||v===undefined||v==="")return '<span class="muted">—</span>';if(k==="amount"||k==="total"||k==="budget"||k==="actual_cost"||k==="expected_revenue"||k==="unit_price"||k==="annual_revenue")return esc(money(v));if(k.includes("date")||k.endsWith("_at"))return esc(date(v));if(k==="status"||k==="stage"||k==="priority"||k==="outcome")return '<span class="crm-pill">'+esc(v)+'</span>';return esc(v);}
 function formHtml(record){
- const def=CRM_MODULES[active];return '<div class="crm-dialog-backdrop" id="crm-dialog"><form class="crm-dialog" id="crm-record-form"><div class="crm-dialog-head"><div><span class="eyebrow">'+(record?"EDIT":"NEW")+' RECORD</span><h2>'+(record?"Edit ":"Create ")+esc(def.title.replace(/s$/,""))+'</h2></div><button type="button" data-crm-action="close" class="icon-btn">×</button></div><div class="crm-dialog-fields">'+def.fields.map(([key,label,type,opts])=>'<label>'+esc(label)+(type==="select"?'<select name="'+key+'">'+opts.map(o=>'<option value="'+esc(o)+'" '+(String(record?.[key]??"")===o?"selected":"")+'>'+esc(o==="true"?"Yes":o==="false"?"No":o)+'</option></select>':type==="textarea"?'<textarea name="'+key+'" rows="3">'+esc(inputValue(type,record?.[key]))+'</textarea>':'<input name="'+key+'" type="'+type+'" value="'+esc(record?.[key]??"")+'" '+(key===def.primary?"required":"")+' step="'+(type==="number"?"any":"")+'">')+'</label>').join("")+'</div><div class="crm-dialog-foot"><span class="crm-form-error" id="crm-form-error"></span><button type="button" class="btn btn-secondary" data-crm-action="close">Cancel</button><button type="submit" class="btn btn-primary">'+(record?"Save changes":"Create record")+'</button></div></form></div>';
+ const def=CRM_MODULES[active];
+ const fields=def.fields.map(([key,label,type,opts])=>{
+  let control="";
+  if(type==="select"){
+   control='<select name="'+key+'">'+opts.map(o=>'<option value="'+esc(o)+'" '+(String(record?.[key]??"")===o?"selected":"")+'>'+esc(o==="true"?"Yes":o==="false"?"No":o)+'</option>').join("")+'</select>';
+  }else if(type==="textarea"){
+   control='<textarea name="'+key+'" rows="3">'+esc(record?.[key]??"")+'</textarea>';
+  }else{
+   control='<input name="'+key+'" type="'+type+'" value="'+esc(inputValue(type,record?.[key]))+'" '+(key===def.primary?"required":"")+' '+(type==="number"?'step="any"':"")+'>';
+  }
+  return '<label>'+esc(label)+control+'</label>';
+ }).join("");
+ return '<div class="crm-dialog-backdrop" id="crm-dialog"><form class="crm-dialog" id="crm-record-form"><div class="crm-dialog-head"><div><span class="eyebrow">'+(record?"EDIT":"NEW")+' RECORD</span><h2>'+(record?"Edit ":"Create ")+esc(def.title.replace(/s$/,""))+'</h2></div><button type="button" data-crm-action="close" class="icon-btn">×</button></div><div class="crm-dialog-fields">'+fields+'</div><div class="crm-dialog-foot"><span class="crm-form-error" id="crm-form-error"></span><button type="button" class="btn btn-secondary" data-crm-action="close">Cancel</button><button type="submit" class="btn btn-primary">'+(record?"Save changes":"Create record")+'</button></div></form></div>';
 }
 function openForm(record){editing=record||null;const wrap=document.createElement("div");wrap.innerHTML=formHtml(record);document.body.append(wrap.firstElementChild);}
 function closeForm(){$("#crm-dialog")?.remove();editing=null;}
