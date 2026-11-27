@@ -28,10 +28,10 @@ export const CRM_MODULES = {
   ],columns:["title","related_type","related_id","created_at"]},
   products:{title:"Products",table:"crm_products",primary:"name",fields:[
     ["name","Product name","text"],["sku","SKU","text"],["description","Description","textarea"],["unit","Unit","text"],["unit_price","Selling price (₹)","number"],["cost_price","Cost price (₹)","number"],["tax_rate","Tax rate (%)","number"],["is_active","Active","select",["true","false"]]
-  ],columns:["name","sku","unit_price","tax_rate","is_active"]},
+  ],columns:["name","sku","unit_price","tax_rate","is_active","id"]},
   quotes:{title:"Quotes",table:"crm_quotes",primary:"subject",fields:[
     ["subject","Quote subject","text"],["quote_number","Quote number","text"],["status","Status","select",["Draft","Sent","Accepted","Rejected","Expired"]],["issue_date","Issue date","date"],["expiry_date","Expiry date","date"],["subtotal","Subtotal (₹)","number"],["discount","Discount (₹)","number"],["tax_total","Tax total (₹)","number"],["total","Total (₹)","number"],["currency","Currency","text"],["terms","Terms & conditions","textarea"]
-  ],columns:["quote_number","subject","status","issue_date","total"]},
+  ],columns:["quote_number","subject","status","issue_date","total","id"]},
   tickets:{title:"Support Tickets",table:"crm_tickets",primary:"subject",fields:[
     ["subject","Ticket subject","text"],["status","Status","select",["Open","In Progress","On Hold","Resolved","Closed"]],["priority","Priority","select",["Low","Normal","High","Urgent"]],["channel","Channel","select",["Email","Phone","Website","Social","Other"]],["ticket_number","Ticket number","text"],["due_at","Due date","datetime-local"],["description","Description","textarea"]
   ],columns:["ticket_number","subject","status","priority","channel","created_at"]},
@@ -47,7 +47,7 @@ export const CRM_MODULES = {
   territories:{title:"Territories",table:"crm_territories",primary:"name",fields:[["name","Territory name","text"],["description","Description","textarea"]],columns:["name","description","created_at"]},
   approvals:{title:"Approval Requests",table:"crm_approval_requests",primary:"record_id",fields:[["module","Module","select",["leads","contacts","accounts","deals","quotes","tickets"]],["record_id","Record ID","text"],["reason","Reason for approval","textarea"],["status","Status","select",["Pending","Approved","Rejected"]],["decision_note","Decision note","textarea"]],columns:["module","record_id","status","reason","created_at"]},
   pipelines:{title:"Sales Pipelines",table:"crm_pipelines",primary:"name",fields:[["name","Pipeline name","text"],["module","Module","select",["deals"]],["is_default","Default pipeline","select",["true","false"]]],columns:["name","module","is_default","id"]},
-  pipelineStages:{title:"Pipeline Stages",table:"crm_pipeline_stages",primary:"name",fields:[["pipeline_id","Pipeline ID (copy from Sales Pipelines)","text"],["name","Stage name","text"],["probability","Win probability (%)","number"],["sort_order","Order","number"],["is_closed","Closed stage","select",["true","false"]],["is_won","Won stage","select",["true","false"]]],columns:["pipeline_id","name","probability","sort_order","is_closed","is_won"]},
+  pipelineStages:{title:"Pipeline Stages",table:"crm_pipeline_stages",primary:"name",fields:[["pipeline_id","Pipeline ID (copy from Sales Pipelines)","text"],["name","Stage name","text"],["probability","Win probability (%)","number"],["sort_order","Order","number"],["is_closed","Closed stage","select",["true","false"]],["is_won","Won stage","select",["true","false"]]],columns:["pipeline_id","name","probability","sort_order","is_closed","is_won","id"]},
   quoteItems:{title:"Quote Line Items",table:"crm_quote_items",primary:"description",fields:[["quote_id","Quote ID","text"],["product_id","Product ID","text"],["description","Description","text"],["quantity","Quantity","number"],["unit_price","Unit price (₹)","number"],["discount","Discount (₹)","number"],["tax_rate","Tax rate (%)","number"],["line_total","Line total (₹)","number"]],columns:["quote_id","description","quantity","unit_price","tax_rate","line_total"]}
 };
 
